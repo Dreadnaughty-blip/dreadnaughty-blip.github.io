@@ -5,7 +5,7 @@ highlight_color: '#008000'
 
 # Profile links on the left sidebar, leave blank to ignore
 social:
-  github: 
+  github: https://dreadnaughty-blip.github.io
   #bitbucket: 
   hacker_news: 
   #stackexchange: 
@@ -13,21 +13,21 @@ social:
   twitter: 
   #facebook:
   #tumblr:
-  #linkedin:
+  #linkedin: www.linkedin.com/in/bobby-smit-van-prooijen-93766657
   #gplus: 
   #gravatar: 
   #flickr: 
 
 # "Hi, I'm _______"
 name: Bob Smit van Prooijen
-email: bobbysmit@gamil.com
-tagline: "innovation is key"
+email: bobbysmit@gmail.com
+tagline: "Innovation is key"
 
 # Google Analytics key, leave blank to ignore
-google_analytics_key: UA-xxxx-x
+google_analytics_key: 
 
 # Toggle "Postings are my own" disclaimer in footer
 show_disclaimer: true
 
 # Toggle link/icon to view atom feed (/atom.xml) in sidebar
-show_atom_feed: true
+show_atom_feed: false
