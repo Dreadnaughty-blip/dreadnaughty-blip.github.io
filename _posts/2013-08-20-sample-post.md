@@ -1,44 +1,22 @@
 ---
 layout: post
-title: Sample post
+title: Mörk Borg
 categories:
 - blog
 ---
 
-Tattooed roof party *vinyl* freegan single-origin coffee wayfarers tousled, umami yr 
-meggings hella selvage. Butcher bespoke seitan, cornhole umami gentrify put a bird 
-on it occupy trust fund. Umami whatever kitsch, locavore fingerstache Tumblr pork belly
-[keffiyeh](#). Chia Echo Park Pitchfork, Blue Bottle [hashtag](#) stumptown skateboard selvage 
-mixtape. Echo Park retro butcher banjo cardigan, seitan flannel Brooklyn paleo fixie 
-Truffaut. Forage mustache Thundercats next level disrupt. Bicycle rights forage tattooed
-chia, **wayfarers** swag raw denim hashtag biodiesel occupy gastropub!
+So I've been running a Mörk Borg campaign and let me tell you... it's good. It's so dark and horrible and 
+everything feels like re-arranging the deck chairs or polishing the brass on the Titanic: it's all going
+down man! And for some reason... it's enticing. The last few days/months/years before everything is going to 
+absolute shit and here I am, fighting doom metal monsters and black rock lava knife-wielding demons and it all
+seems balancing on the edge of a cliff. It's awesome. It's concerning. It's Mörk Borg.
 
 ---
 
-# It's all in the game.
+### Meet Usk, a fanged deserter with terrible teeth
 
-## You come at the king, you best not miss.
+His first, short foray took him into the 'Torture Tunnels' where he was supposed to find the son of his employer...
+only to find a wyvern and a stack of bones left over from all the boys the cult has sacrificed to this monster. 
+It was difficult, but he managed to kill the damn thing and find some pretty awesome loot in the tunnels. 
 
-### Be subtle with it, man. You know what subtle means?
-
-VHS post-ironic cred **bespoke** banjo. Yr wayfarers literally gentrify, flexitarian fap 
-dreamcatcher plaid cornhole Intelligentsia paleo. Beard try-hard direct trade, shabby chic 
-Helvetica `look ma, I can code`. Lo-fi American Apparel tattooed [Vice](#) tofu, yr vinyl. 
-Williamsburg butcher hella mumblecore fixie mlkshk, cliche wolf keytar mixtape kitsch banh mi 
-salvia. High Life Odd Future *chambray* kale chips hoodie, cray pop-up. Helvetica narwhal 
-iPhone try-hard jean shorts.
-
-> This is a quote from someone famous about productivity
-
-
-Syntax highlighting with Solarized theme.
-
-{% highlight ruby %}
-class User < ActiveRecord::Base
-  attr_accessible :email, :name
-
-  ... tons of other crap ...
-
-end
-
-{% endhighlight %}
+> Now all he needs to do is tell his employer the result. Yeah. 
