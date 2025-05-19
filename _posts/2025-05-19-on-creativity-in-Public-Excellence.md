@@ -1,6 +1,6 @@
 ---
 layout: post
-title: On Creativity at the DM's table.
+title: On Creativity in Public Excellence
 categories:
 - blog
 ---
