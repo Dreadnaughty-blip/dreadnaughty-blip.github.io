@@ -3,7 +3,9 @@ layout: post
 title: On Creativity in Public Excellence
 categories:
 - blog
-Tags: work, RPGs
+Tags:
+- work
+- RPGs
 ---
 
 Okay, grab your d20s and your strategy decks – but maybe swap the grim dark for glitter and unexpected sandwich requests. Here's a short blog post for you.
