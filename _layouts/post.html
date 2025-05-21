@@ -11,6 +11,14 @@ layout: default
 
 <h1 class="title">{{ page.title }}</h1>
 
+{%- if page.tags -%}
+    {% for tag in page.tags %}
+        <a href="{{site.baseurl}}/archive.html#{{tag | slugize}}">
+            #{{ tag }}
+        </a>
+    {% endfor %}
+{%- endif -%}
+
 <div id="post">
   {{ content }}
 </div>
@@ -25,11 +33,3 @@ layout: default
     {% endfor %}
   </ul>
 </div>
-
-{%- if page.tags -%}
-    {% for tag in page.tags %}
-        <a href="{{site.baseurl}}/archive.html#{{tag | slugize}}">
-            #{{ tag }}
-        </a>
-    {% endfor %}
-{%- endif -%}
