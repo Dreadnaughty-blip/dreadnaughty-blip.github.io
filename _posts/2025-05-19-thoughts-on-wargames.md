@@ -3,6 +3,7 @@ layout: post
 title: Thoughts on Wargames
 categories:
 - blog
+tags: RPGs
 ---
 
 So I've been thinking on wargames, and how they relate to RPGs and how we play RPGs. 
