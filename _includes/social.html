@@ -71,4 +71,9 @@ Follow me:
     <i class="fa fa-rss-square"></i>
   </a>
   {% endif %}
+
+  {% if site.data.theme.social.email %}
+  <a title="Send an email to {{ site.data.theme.name }}" href="{{ site.data.theme.social.email }}">
+    <i class="fa fa-envelope"></i> </a>
+  {% endif %}
 </div>
