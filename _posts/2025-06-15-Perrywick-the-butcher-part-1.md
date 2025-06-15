@@ -7,7 +7,7 @@ Tags:
 - RPGs
 ---
 
-<img src="https://github.com/Dreadnaughty-blip/dreadnaughty-blip.github.io/blob/master/assets/Perrywick_the_butcher.jpg?raw=true" alt="A picture of smiling Halfling Slayer">
+<img src="https://github.com/Dreadnaughty-blip/dreadnaughty-blip.github.io/blob/master/assets/Perrywick_the_butcher.jpg?raw=true" alt="A picture of smiling Halfling Slayer" width="800" height="600">
 
 The saga follows Perrywick the Butcher, a halfling with the unique and audacious ambition of joining a dwarven Slayer Cult, 
 an order typically reserved for dwarves seeking a glorious death in battle to atone for some past shame. 
