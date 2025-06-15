@@ -7,6 +7,8 @@ Tags:
 - RPGs
 ---
 
+<img src="https://github.com/Dreadnaughty-blip/dreadnaughty-blip.github.io/blob/master/assets/Perrywick_the_butcher.jpg?raw=true" alt="A picture of smiling Halfling Slayer">
+
 The saga follows Perrywick the Butcher, a halfling with the unique and audacious ambition of joining a dwarven Slayer Cult, 
 an order typically reserved for dwarves seeking a glorious death in battle to atone for some past shame. 
 After surprising the local guild administrators in the dwarven city of Stonehammer Hold, who had no rules forbidding non-dwarves from joining, he was accepted as an "acolyte." 
