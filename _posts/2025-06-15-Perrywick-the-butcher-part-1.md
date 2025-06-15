@@ -1,3 +1,12 @@
+---
+layout: post
+title: Perrywick the Butcher part 1
+categories:
+- blog
+Tags:
+- RPGs
+---
+
 The saga follows Perrywick the Butcher, a halfling with the unique and audacious ambition of joining a dwarven Slayer Cult, 
 an order typically reserved for dwarves seeking a glorious death in battle to atone for some past shame. 
 After surprising the local guild administrators in the dwarven city of Stonehammer Hold, who had no rules forbidding non-dwarves from joining, he was accepted as an "acolyte." 
