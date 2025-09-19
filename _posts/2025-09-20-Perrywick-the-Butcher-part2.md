@@ -9,8 +9,6 @@ Tags:
 
 <img src="https://github.com/Dreadnaughty-blip/dreadnaughty-blip.github.io/blob/master/assets/css/perrywick_butcher.png?raw=true" alt="Perrywick in 2D6 Dungeon" width="600" height="800">
 
-assets/css/perrywick_butcher.png
-
 <h1>Descend into the (2D6) Dungeon</h1>
 After finding his way through already a thousand different horrors, Perrywick descended into the dungeon of Damaz in order to deliver the Grimfang of Gromril to the Shrine of Damaz and perform the Vigil of the Bitter Stone. 
 Starting off in the first level of the dungeon, he soon found himself discovering a giant network of tunnels descending deeper and deeper in the mountain. To his dismay, the dungeon where the Shrine of Damaz is supposed to be located is 10 levels deep (!!)
