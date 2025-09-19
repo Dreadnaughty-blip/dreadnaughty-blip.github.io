@@ -13,7 +13,7 @@ Past weekend I DM'd a series of three one-shots at a local con. I chose the syst
 
 I brought mini's, a battlemat and a stack of character sheets. I printed the rules (which conveniently fit on two pages) and we were off!
 
-<h1>**The One Shot**</h1>
+<h1>The One Shot</h1>
 I playtested a one shot on two occasions, and somewhere in between those two playtests I realized this wasn't an issue of rules or complicated dice rolls or maths... but of pacing. 
 
 The setting is already great: Warhammer 40K Orcs on a ship beating everything to pulp is setting enough. The color scheme (see picture of Grimy above) is bonkers but so attractive for a full blast metal ram-fest. The minis, which I borrowed and 3D-printed from WH40K Orcs and painted are awesome. The limit is imagination, but with multiple people at the table even that doesn't seem too much of a barrier. 
@@ -36,7 +36,7 @@ I have players draw a subway on the battlemat, and a station next to it. Then th
 
 The chase is on!
 
-<h2>**Trains**</h2>
+<h2>Trains</h2>
 
 1. One train is controlled by goblins/grots, which makes it just a undercarriage on a train track, hanging wires, no walls and a couple of seats. This train has a little red light which tells the players when to duck as it goes pedal-to-the-metal through these tunnels with hanging bars, sudden bumps etc. But hey, it works. Players loved this train because it give them so many opportunities to yeet guys off the train or to try and hang on the edge.
 2. A second train is operated by spacers, or a space-marine-like faction, maybe just Guardsmen. I usually don't give them guns to stay within the flavor of the setting, since Spacers have forgotten their origin on board the Derelict. This is really clean and all the spacers lament the blood and gore covering their formerly pristine train during a scrap. Now this is a great opportunity to introduce a mech, where aboard the train a bunch of spacers are worshipping a robot/mech. If the players roll on the reaction table anything other than coming to blows there's a great roleplay opportunity here where one of the players can strap in the mech and use it during the rest of the encounters. Obviously, it comes at a cost, like more adversaries or difficult circumstances down the line. Unfortunately, the mech model I brought during the three sessions broke in three pieces whilst carrying so I wasn't able to use it during the one-shots, but definitely a fun idea here!
