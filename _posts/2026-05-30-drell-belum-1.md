@@ -48,7 +48,7 @@ Only to immediately leap back. Drell looked up, surprise written on his face. Wh
 
 'What did the lich look like?'
 
-'What? I didn't really get a good look, but the evil monster was dressed pretty tastefully. Nice robes, golden furs, I think he had a crown of golden darkness on his... skull. Anyway, I noticed the pretty slippers, rubies on the toes. Then the red cravat...
+'What? I didn't really get a good look, but the evil monster was dressed pretty tastefully. Nice robes, golden furs, I think he had a crown of golden darkness on his... skull. Anyway, I noticed the pretty slippers, rubies on the toes. Then the red cravat...'
 
 'Red cravat?  I got this.' Drell stood up. 'You better remain here. The uhm... powerful magics I'm about to release are not meant for untrained eyes. You know, exploding eyeballs, vocal cords rupturing and all. We don't want that for you. Actually, it might be even better if you cover your ears whilst hunkering down here. Maybe hum that sweet lullaby your mother sang when you were little.'
 
