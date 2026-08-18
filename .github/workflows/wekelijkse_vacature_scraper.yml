@@ -4,7 +4,7 @@ on:
   schedule:
     # Cron-notatie voor: "Elke maandag om 08:00 UTC (09:00 of 10:00 Nederlandse tijd)"
     - cron: '0 8 * * 1'
-  workflow_dispatch: # Dit maakt het mogelijk om de scraper op elk gewenst moment handmatig te starten via GitHub
+  workflow_dispatch: # Dit maakt het mogelijk om de scraper handmatig te starten via GitHub Actions
 
 permissions:
   contents: write # Geeft GitHub toestemming om de database 'bekende_vacatures.json' bij te werken
@@ -15,10 +15,10 @@ jobs:
 
     steps:
     - name: Code ophalen uit repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # Geüpdatet naar v4 voor Node24-compatibiliteit
 
     - name: Python instellen
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # Geüpdatet naar v5 voor Node24-compatibiliteit
       with:
         python-version: '3.10'
 
