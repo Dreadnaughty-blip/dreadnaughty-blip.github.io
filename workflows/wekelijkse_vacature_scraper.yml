@@ -1,0 +1,42 @@
+name: Wekelijkse Vacature Scraper
+
+on:
+  schedule:
+    # Cron-notatie voor: "Elke maandag om 08:00 UTC (09:00 of 10:00 Nederlandse tijd)"
+    - cron: '0 8 * * 1'
+  workflow_dispatch: # Dit maakt het mogelijk om de scraper op elk gewenst moment handmatig te starten via GitHub
+
+permissions:
+  contents: write # Geeft GitHub toestemming om de database 'bekende_vacatures.json' bij te werken
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Code ophalen uit repository
+      uses: actions/checkout@v3
+
+    - name: Python instellen
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Afhankelijkheden installeren
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4
+
+    - name: Scraper uitvoeren
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python vacature_scraper_telegram.py
+
+    - name: Wijzigingen opslaan in bekende_vacatures.json
+      run: |
+        git config --global user.name "GitHub Action Bot"
+        git config --global user.email "actions@github.com"
+        git add bekende_vacatures.json
+        # Commit alleen als er daadwerkelijk wijzigingen (nieuwe vacatures) zijn
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Database met bekende vacatures bijgewerkt" && git push)
