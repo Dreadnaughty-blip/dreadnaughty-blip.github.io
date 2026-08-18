@@ -2,12 +2,12 @@ name: Wekelijkse Vacature Scraper
 
 on:
   schedule:
-    # Cron-notatie voor: "Elke maandag om 08:00 UTC (09:00 of 10:00 Nederlandse tijd)"
+    # Elke maandag om 08:00 UTC (09:00 wintertijd / 10:00 zomertijd in NL)
     - cron: '0 8 * * 1'
-  workflow_dispatch: # Dit maakt het mogelijk om de scraper handmatig te starten via GitHub Actions
+  workflow_dispatch: # Dit maakt handmatig starten via de GitHub Actions-knop mogelijk
 
 permissions:
-  contents: write # Geeft GitHub toestemming om de database 'bekende_vacatures.json' bij te werken
+  contents: write # Cruciaal om bekende_vacatures.json automatisch te kunnen updaten
 
 jobs:
   run-scraper:
@@ -15,10 +15,10 @@ jobs:
 
     steps:
     - name: Code ophalen uit repository
-      uses: actions/checkout@v4 # Geüpdatet naar v4 voor Node24-compatibiliteit
+      uses: actions/checkout@v4 # Volledig compatibel met Node24
 
     - name: Python instellen
-      uses: actions/setup-python@v5 # Geüpdatet naar v5 voor Node24-compatibiliteit
+      uses: actions/setup-python@v5 # Volledig compatibel met Node24
       with:
         python-version: '3.10'
 
@@ -31,12 +31,12 @@ jobs:
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: python vacature_scraper_telegram.py
+      run: python vacature_scraper_telegram_v2.py # Verwijst nu naar het v2 bestand
 
-    - name: Wijzigingen opslaan in bekende_vacatures.json
+    - name: Database met bekende vacatures opslaan en pushen
       run: |
         git config --global user.name "GitHub Action Bot"
         git config --global user.email "actions@github.com"
         git add bekende_vacatures.json
-        # Commit alleen als er daadwerkelijk wijzigingen (nieuwe vacatures) zijn
-        git diff --quiet && git diff --staged --quiet || (git commit -m "Database met bekende vacatures bijgewerkt" && git push)
+        # Commit en push alleen als er daadwerkelijk een nieuwe vacature is gevonden (om loze commits te voorkomen)
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Database met bekende vacatures bijgewerkt [skip ci]" && git push)
