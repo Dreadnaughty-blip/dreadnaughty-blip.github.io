@@ -31,7 +31,7 @@ jobs:
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: python vacature_scraper_telegram.py
+      run: python vacature_scraper_telegram_v2.py
 
     - name: Database met bekende vacatures opslaan en pushen
       run: |
