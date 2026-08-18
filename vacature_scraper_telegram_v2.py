@@ -3,7 +3,6 @@ from bs4 import BeautifulSoup
 import json
 import os
 import re
-import sys
 
 # CONFIGURATIE
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -11,12 +10,12 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 DATA_FILE = "bekende_vacatures.json"
 
 # Doelorganisaties en schalen
-KEYWORDS_ORG = ["defensie", "mivd", "aivd", "algemene inlichtingen", "militaire inlichtingen", "binnenlandse zaken", "justitie", "jenv"]
-TARGET_SCALES = ["schaal 13", "schaal 14", "schaal-13", "schaal-14", "salarisschaal 13", "salarisschaal 14"]
+KEYWORDS_ORG = ["defensie", "mivd", "aivd", "binnenlandse zaken", "bzk", "veiligheidsdienst", "inlichtingen"]
+TARGET_SCALES = ["schaal 13", "schaal 14", "schaal13", "schaal14", "13", "14"]
 
 def send_telegram_message(message):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Telegram niet geconfigureerd. Log:")
+        print("Telegram niet geconfigureerd. Bericht:")
         print(message)
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -29,194 +28,193 @@ def send_telegram_message(message):
     try:
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
-        print("Telegram-bericht succesvol verzonden.")
+        print("Telegram-notificatie succesvol verzonden.")
     except Exception as e:
         print(f"Fout bij verzenden Telegram: {e}")
 
+def clean_text(text):
+    if not text:
+        return ""
+    return re.sub(r'\s+', ' ', text).strip()
+
 def scrape_vacancies():
-    # Basis URL voor Werken voor Nederland
-    search_url = "https://www.werkenvoornederland.nl/vacatures"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7"
-    }
-    
-    print(f"Start met ophalen van: {search_url}")
-    try:
-        response = requests.get(search_url, headers=headers, timeout=15)
-        response.raise_for_status()
-    except Exception as e:
-        error_msg = f"❌ *Scraper Fout*\nKon de website van Werken voor Nederland niet bereiken: {e}"
-        send_telegram_message(error_msg)
-        sys.exit(f"Fout bij ophalen website: {e}")
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-    all_found_vacancies = []
-
-    # --- METHODE 1: JSON-LD (Meest betrouwbaar voor Google Jobs SEO, overleeft JS-rendering) ---
-    for script in soup.find_all("script", type="application/ld+json"):
-        try:
-            data = json.loads(script.string)
-            # Normaliseer naar lijst
-            items = []
-            if isinstance(data, dict):
-                if data.get("@type") == "JobPosting":
-                    items.append(data)
-                elif data.get("@type") == "ItemList" and "itemListElement" in data:
-                    for element in data["itemListElement"]:
-                        if isinstance(element, dict):
-                            job = element.get("item") if "item" in element else element
-                            if isinstance(job, dict) and job.get("@type") == "JobPosting":
-                                items.append(job)
-            elif isinstance(data, list):
-                items = [x for x in data if isinstance(x, dict) and x.get("@type") == "JobPosting"]
-
-            for item in items:
-                title = item.get("title", "")
-                org = item.get("hiringOrganization", {}).get("name", "") if isinstance(item.get("hiringOrganization"), dict) else ""
-                link = item.get("url", "")
-                desc = item.get("description", "")
-                
-                # Sla op voor filtering
-                all_found_vacancies.append({
-                    "title": title,
-                    "org": org,
-                    "link": link,
-                    "full_text": f"{title} {org} {desc}".lower()
-                })
-        except Exception as e:
-            continue
-
-    # --- METHODE 2: Traditionele HTML kaarten (Fallback) ---
-    card_selectors = [
-        ("div", "vacancy-card"),
-        ("a", "vacancy-card"),
-        ("div", "card"),
-        ("li", "vacancy-item"),
-        ("div", "search-result")
+    # We scannen zowel de hoofd-vacaturepagina als de specifieke ICT/Veiligheid paginas voor maximale vindbaarheid
+    urls_to_scan = [
+        "https://www.werkenvoornederland.nl/vacatures",
+        "https://www.werkenvoornederland.nl/vacatures/ict",
+        "https://www.werkenvoornederland.nl/vacatures?vakgebied=Orde/vrede/veiligheid"
     ]
     
-    html_cards_found = 0
-    for tag, class_name in card_selectors:
-        cards = soup.find_all(tag, class_=class_name)
-        if cards:
-            html_cards_found = len(cards)
-            print(f"HTML-kaarten gevonden met selector '{tag}.{class_name}': {html_cards_found}")
-            for card in cards:
-                title_elem = card.find(["h3", "h2", "div"], class_=re.compile(r"title|header")) or card.find(["h3", "h2"])
-                title = title_elem.get_text(strip=True) if title_elem else ""
-                
-                link_elem = card.find("a") or (card if card.name == "a" else None)
-                link = link_elem["href"] if link_elem and "href" in link_elem.attrs else ""
-                
-                org_elem = card.find(class_=re.compile(r"org|organisation|meta"))
-                org = org_elem.get_text(strip=True) if org_elem else ""
-                
-                meta_text = card.get_text().lower()
-                
-                if title or link:
-                    vac_link = f"https://www.werkenvoornederland.nl{link}" if link and not link.startswith("http") else link
-                    all_found_vacancies.append({
-                        "title": title,
-                        "org": org,
-                        "link": vac_link,
-                        "full_text": f"{title} {org} {meta_text}".lower()
-                    })
-            break
-
-    # --- METHODE 3: Generieke Links (Uiterste Fallback) ---
-    if not all_found_vacancies:
-        print("Geen gestructureerde kaarten of JSON-LD gevonden. Scannen op generieke vacature-links...")
-        for link_elem in soup.find_all("a", href=re.compile(r"/vacature/")):
-            title = link_elem.get_text(strip=True)
-            link = link_elem["href"]
-            if title and link:
-                vac_link = f"https://www.werkenvoornederland.nl{link}" if not link.startswith("http") else link
-                all_found_vacancies.append({
-                    "title": title,
-                    "org": "",
-                    "link": vac_link,
-                    "full_text": title.lower()
-                })
-
-    # --- DIAGNOSTIEK ---
-    total_found = len(all_found_vacancies)
-    print(f"Totaal aantal vacatures gedetecteerd op pagina: {total_found}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     
-    if total_found == 0:
-        warning_msg = (
-            "⚠️ *Scraper Waarschuwing*\n"
-            "Er zijn *0 vacatures* gedetecteerd op de pagina.\n"
-            "Waarschijnlijk heeft Werken voor Nederland de paginastructuur gewijzigd of blokkeert een Cloudflare-scherm de scraper.\n\n"
-            "Controleer de logs van je GitHub Action voor meer technische details."
-        )
-        send_telegram_message(warning_msg)
-        print("DIAGNOSTISCHE INFO:")
-        print(f"Pagina-lengte: {len(response.text)} karakters")
-        print(f"Eerste 500 karakters: {response.text[:500]}")
-        return []
+    all_vacancies = []
+    seen_links = set()
+    
+    for search_url in urls_to_scan:
+        print(f"Start met ophalen van: {search_url}")
+        try:
+            response = requests.get(search_url, headers=headers, timeout=15)
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Fout bij ophalen {search_url}: {e}")
+            continue
 
-    # --- FILTERING ---
-    matched_vacancies = []
-    for vac in all_found_vacancies:
-        # Check organisatie (moet defensie/aivd/mivd o.i.d. bevatten)
-        is_target_org = any(k in vac["full_text"] for k in KEYWORDS_ORG)
-        # Check salarisschaal (moet schaal 13 of 14 bevatten)
-        is_target_scale = any(s in vac["full_text"] for s in TARGET_SCALES)
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Extra controle voor directe schaal-getallen los in de tekst (bijv. "schaal 13" of "schaal 14")
-        if not is_target_scale:
-            scale_match = re.search(r"schaal\s*(?:colon|:)?\s*(13|14)\b", vac["full_text"])
-            if scale_match:
-                is_target_scale = True
+        # Strategy 1: Google Jobs / JSON-LD structured data extraction
+        print("Proberen vacatures te vinden via gestructureerde JSON-LD data...")
+        json_scripts = soup.find_all("script", type="application/ld+json")
+        for js in json_scripts:
+            try:
+                data = json.loads(js.string)
+                items = []
+                if isinstance(data, list):
+                    items = data
+                elif isinstance(data, dict):
+                    if "@graph" in data:
+                        items = data["@graph"]
+                    elif data.get("@type") == "JobPosting":
+                        items = [data]
+                
+                for item in items:
+                    if item.get("@type") == "JobPosting":
+                        title = item.get("title", "")
+                        link = item.get("url", "")
+                        org_info = item.get("hiringOrganization", {})
+                        org = org_info.get("name", "") if isinstance(org_info, dict) else str(org_info)
+                        desc = item.get("description", "").lower()
+                        
+                        is_target_org = any(k in org.lower() or k in title.lower() for k in KEYWORDS_ORG)
+                        is_target_scale = any(s in desc or s in title.lower() for s in TARGET_SCALES)
+                        
+                        if is_target_org and is_target_scale and link:
+                            if link not in seen_links:
+                                seen_links.add(link)
+                                all_vacancies.append({
+                                    "title": clean_text(title),
+                                    "org": clean_text(org),
+                                    "link": link
+                                })
+            except Exception as e:
+                print(f"Fout bij parsen JSON-LD: {e}")
 
-        if is_target_org and is_target_scale:
-            matched_vacancies.append(vac)
+        # Strategy 2: Nuxt/Next/Webpack hydration state extraction
+        print("Proberen vacatures te vinden in Nuxt/Next hydration state...")
+        for script in soup.find_all("script"):
+            script_text = script.string if script.string else ""
+            if "__NUXT__" in script_text or "__NEXT_DATA__" in script_text or "pageData" in script_text:
+                links = re.findall(r'/vacatures/[a-zA-Z0-9-]+-[A-Z]+-\d{4}-\d+', script_text)
+                for rel_link in links:
+                    full_link = f"https://www.werkenvoornederland.nl{rel_link}"
+                    if full_link not in seen_links:
+                        slug = rel_link.split("/")[-1]
+                        parts = slug.split("-")
+                        title_parts = parts[:-3]
+                        guessed_title = " ".join(title_parts).capitalize()
+                        guessed_org = parts[-3]
+                        
+                        is_target_org = any(k in guessed_org.lower() or k in guessed_title.lower() for k in KEYWORDS_ORG)
+                        if is_target_org:
+                            seen_links.add(full_link)
+                            all_vacancies.append({
+                                "title": guessed_title,
+                                "org": f"Overheidsorganisatie ({guessed_org.upper()})",
+                                "link": full_link
+                            })
 
-    print(f"Aantal vacatures na filtering (schaal 13/14 + Defensie/AIVD/MIVD): {len(matched_vacancies)}")
-    return matched_vacancies
+        # Strategy 3: Parent-Container Link Scanning (The Bulletproof Regex Method)
+        print("Proberen vacatures te vinden via slimme HTML-link scanning...")
+        vacancy_url_pattern = re.compile(r'/vacatures/[a-zA-Z0-9-]+-[A-Z]+-\d{4}-\d+')
+        
+        all_links = soup.find_all("a", href=True)
+        for link_elem in all_links:
+            href = link_elem["href"]
+            if vacancy_url_pattern.search(href) or ("/vacatures/" in href and any(str(year) in href for year in [2025, 2026, 2027])):
+                full_link = f"https://www.werkenvoornederland.nl{href}" if href.startswith("/") else href
+                
+                if full_link in seen_links:
+                    continue
+                
+                title = clean_text(link_elem.get_text())
+                if not title or len(title) < 5:
+                    title = link_elem.get("title", "")
+                    if not title and link_elem.find_parent():
+                        h_elem = link_elem.find_parent().find(["h2", "h3", "h4"])
+                        if h_elem:
+                            title = h_elem.get_text()
+                
+                parent = link_elem.find_parent()
+                context_text = ""
+                org = "Rijksoverheid"
+                
+                for _ in range(5):
+                    if not parent:
+                        break
+                    parent_text = parent.get_text().lower()
+                    if len(parent_text) > len(context_text):
+                        context_text = parent_text
+                        for keyword in ["ministerie van defensie", "defensie", "mivd", "aivd", "binnenlandse zaken", "bzk", "justitie en veiligheid", "jenv"]:
+                            if keyword in parent_text:
+                                org = keyword.title()
+                                break
+                    parent = parent.find_parent()
+                
+                meta_lower = f"{title.lower()} {org.lower()} {context_text}"
+                is_target_org = any(k in meta_lower for k in KEYWORDS_ORG)
+                is_target_scale = any(s in meta_lower for s in TARGET_SCALES)
+                
+                if is_target_org and is_target_scale and title:
+                    seen_links.add(full_link)
+                    all_vacancies.append({
+                        "title": clean_text(title),
+                        "org": clean_text(org),
+                        "link": full_link
+                    })
+
+    print(f"Diagnostische info: Totaal aantal unieke gefilterde vacatures gevonden: {len(all_vacancies)}")
+    return all_vacancies
 
 def main():
-    # 1. Laad reeds bekende vacatures om duplicaten te voorkomen
+    print("--- STARTING VACANCY AGENT SCRAPER ---")
+    
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r") as f:
                 known_ids = set(json.load(f))
         except Exception as e:
-            print(f"Fout bij laden database, we starten met een lege database: {e}")
+            print(f"Fout bij laden van {DATA_FILE}: {e}")
             known_ids = set()
     else:
         known_ids = set()
         
-    # 2. Scrape actuele vacatures
     found_vacancies = scrape_vacancies()
     new_vacancies = []
     
-    # 3. Identificeer nieuwe matches
     for vac in found_vacancies:
-        vac_id = vac["link"] # Gebruik URL als unieke ID
+        vac_id = vac["link"]
         if vac_id not in known_ids:
             new_vacancies.append(vac)
             known_ids.add(vac_id)
             
-    # 4. Verstuur notificaties voor nieuwe vacatures
     if new_vacancies:
+        print(f"Matches gevonden! Meldingen versturen voor {len(new_vacancies)} vacatures.")
         for vac in new_vacancies:
-            msg = f"🔔 *Nieuwe Overheidsvacature Hoge Schaal!*\n\n" \
+            msg = f"🔔 *Nieuwe Overheidsvacature!*\n\n" \
                   f"📌 *Functie:* {vac['title']}\n" \
-                  f"🏢 *Organisatie:* {vac['org'] if vac['org'] else 'Onbekend (zie link)'}\n\n" \
+                  f"🏢 *Organisatie:* {vac['org']}\n\n" \
                   f"🔗 [Bekijk vacature op Werken voor Nederland]({vac['link']})"
             send_telegram_message(msg)
             
-        # Sla geüpdatete lijst op
         try:
             with open(DATA_FILE, "w") as f:
                 json.dump(list(known_ids), f, indent=4)
-            print(f"{len(new_vacancies)} nieuwe vacatures opgeslagen in database.")
+            print("Database succesvol bijgewerkt.")
         except Exception as e:
             print(f"Fout bij opslaan database: {e}")
     else:
-        print("Geen nieuwe matching vacatures gevonden.")
+        print("Geen nieuwe matches gevonden die voldoen aan schaal 13/14 bij Defensie/AIVD/MIVD.")
 
 if __name__ == "__main__":
     main()
