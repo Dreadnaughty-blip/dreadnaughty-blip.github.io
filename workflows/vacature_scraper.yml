@@ -1,0 +1,44 @@
+name: Overheidsvacature Scraper Agent
+
+on:
+  schedule:
+    # Dit draait het script elke dag om stipt 08:00 UTC (09:00 of 10:00 Nederlandse tijd)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    # Hiermee kun je de scraper op elk gewenst moment handmatig starten via de GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Cruciaal om de json-database te mogen updaten
+
+    steps:
+    - name: Code ophalen uit Repository
+      uses: actions/checkout@v4
+
+    - name: Python instellen
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Vereiste bibliotheken installeren
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4
+
+    - name: Scraper Agent uitvoeren
+      env:
+        SMTP_SERVER: "smtp.gmail.com"  # Wijzig dit als je een andere provider gebruikt
+        SMTP_PORT: "587"
+        SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+        SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+        RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+      run: python vacature_scraper.py
+
+    - name: Database wijzigingen opslaan (Staat behouden)
+      run: |
+        git config --global user.name "Vacature Scraper Agent"
+        git config --global user.email "agent@bobsvp.com"
+        git add bekende_vacatures.json
+        git diff-index --quiet HEAD || git commit -m "database: update bekende vacatures [skip ci]" && git push
