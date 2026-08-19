@@ -28,10 +28,10 @@ jobs:
       - name: Scraper en Extrapolatie uitvoeren
         run: python scraper.py
 
-      - name: Dashboard committen en publiceren
+      - name: Microsite committen en publiceren
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add index.html
-          git commit -m "Auto-update: Tender forecast dashboard [skip ci]" || exit 0
+          git add tenderned/index.html
+          git commit -m "Auto-update: Tender microsite update [skip ci]" || exit 0
           git push origin main
