@@ -41,7 +41,7 @@ def fetch_tenderned_publicaties():
     return alle_publicaties
 
 def kwalificeer_tender(item):
-    """Checkt of strategische keywords ergens in het document staan."""
+    """Walst de JSON plat om te checken of er een keyword in zit."""
     volledige_tekst = json.dumps(item).lower()
 
     if any(neg in volledige_tekst for neg in NEGATIEVE_KEYWORDS):
@@ -52,11 +52,11 @@ def kwalificeer_tender(item):
 
     return False, "Geen overlap"
 
-def vind_veld(data, verwachte_sleutels):
+def vind_veld(data, verwachte_sleutels_delen):
     """
-    Breadth-First Search (BFS) extractie.
-    Zoekt netjes eerst op de oppervlakte, vermijdt technische API-rotzooi (zoals _links) 
-    en filtert het foutieve "self" resultaat er hard uit.
+    Slimme BFS extractie met PARTIAL MATCHING.
+    Als de API 'aanbestedendeDienstNaam' of 'publicatieTitel' stuurt, 
+    herkent hij de woorden 'dienst' of 'titel' en pakt hij de inhoud.
     """
     queue = [data]
     
@@ -64,9 +64,11 @@ def vind_veld(data, verwachte_sleutels):
         current = queue.pop(0)
         
         if isinstance(current, dict):
-            # 1. Kijk of het veld zich direct op dit niveau bevindt
             for k, v in current.items():
-                if k.lower() in verwachte_sleutels:
+                k_lower = k.lower()
+                
+                # Check of een van onze zoektermen in de API-sleutel zit
+                if any(deel in k_lower for deel in verwachte_sleutels_delen):
                     if isinstance(v, str) and v.strip() and v.strip().lower() != "self":
                         return v.strip()
                     elif isinstance(v, (int, float)):
@@ -76,7 +78,6 @@ def vind_veld(data, verwachte_sleutels):
                     elif isinstance(v, dict) and 'name' in v:
                         return str(v['name']).strip()
             
-            # 2. Zo niet, sla dan technische mappen (die beginnen met _) over en graaf dieper
             for k, v in current.items():
                 if k.startswith('_'):  
                     continue
@@ -91,7 +92,6 @@ def vind_veld(data, verwachte_sleutels):
     return None
 
 def match_inkooproute(aanbestedende_dienst):
-    """Koppelt de klant aan de ingestelde Eraneos inkooproute uit config.json."""
     if not aanbestedende_dienst or aanbestedende_dienst == "Onbekend":
         return "Vrije inschrijving / Consortium vormen"
         
@@ -142,8 +142,8 @@ def genereer_microsite(leads):
     for lead in leads:
         rijen_html += f"""
         <tr class="tender-row">
-            <td class="client-cell"><strong>{lead['dienst']}</strong></td>
-            <td class="title-cell">{lead['titel']}</td>
+            <td class="client-cell" style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['dienst']}"><strong>{lead['dienst']}</strong></td>
+            <td class="title-cell" style="max-width: 350px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['titel']}">{lead['titel']}</td>
             <td><span class="route-tag">{lead['route']}</span></td>
             <td>{lead['startdatum']}</td>
             <td>{lead['einddatum']}</td>
@@ -249,6 +249,7 @@ def genereer_microsite(leads):
             border-collapse: collapse;
             text-align: left;
             font-size: 0.88rem;
+            table-layout: fixed;
         }}
         th {{
             background: #f8fafc;
@@ -333,11 +334,11 @@ def genereer_microsite(leads):
                         <th style="width: 18%;">Aanbestedende Dienst</th>
                         <th style="width: 25%;">Titel</th>
                         <th style="width: 15%;">Inkooproute</th>
-                        <th>Gepubliceerd</th>
-                        <th>Verwachte Einddatum</th>
-                        <th>Actiedatum Acquisitie</th>
-                        <th>Status</th>
-                        <th>Actie</th>
+                        <th style="width: 10%;">Gepubliceerd</th>
+                        <th style="width: 10%;">Einddatum</th>
+                        <th style="width: 10%;">Acquisitie</th>
+                        <th style="width: 7%;">Status</th>
+                        <th style="width: 5%;">Actie</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -367,27 +368,35 @@ def genereer_microsite(leads):
 def main():
     publicaties = fetch_tenderned_publicaties()
     gekwalificeerde_leads = []
+    debug_printed = False
 
     for pub in publicaties:
         is_fit, reden = kwalificeer_tender(pub)
         if not is_fit:
             continue
 
-        # Aanroep van de nieuwe robuuste extractie functie
-        dienst = vind_veld(pub, ["aanbestedendedienst", "publicerendondernemer", "organisatie", "organisatienaam", "buyer", "klant", "authority"]) or "Onbekend"
-        titel = vind_veld(pub, ["titel", "publicatietitel", "opdrachttitel", "kortebeschrijving", "naamaanbesteding", "title", "naam"]) or "Zonder titel"
-        pub_datum = vind_veld(pub, ["publicatiedatum", "datumpublicatie", "datum", "date", "published"]) or datetime.now().strftime("%Y-%m-%d")
+        # Print de eerste lead uit in het Actions logboek ter controle
+        if not debug_printed:
+            print("--- DEBUG JSON VAN EERSTE LEAD ---")
+            print(json.dumps(pub, indent=2))
+            print("----------------------------------")
+            debug_printed = True
+
+        # Zoek op delen van woorden in plaats van de hele API sleutel
+        dienst = vind_veld(pub, ["aanbestedendedienst", "organisatie", "opdrachtgever", "publicerendondernemer"]) or "Onbekend"
+        titel = vind_veld(pub, ["titel", "opdrachtnaam", "naamaanbesteding", "projectnaam", "kortebeschrijving", "publicatienaam"]) or "Zonder titel"
+        pub_datum = vind_veld(pub, ["publicatiedatum", "datumpublicatie"]) or datetime.now().strftime("%Y-%m-%d")
         
-        # Link opbouwen via het gevonden Publicatie ID
-        pub_id = vind_veld(pub, ["publicatieid", "id", "tenderid", "uuid", "kenmerk"])
-        link = f"https://www.tenderned.nl/aankondigingen/overzicht/{pub_id}" if pub_id else "https://www.tenderned.nl/aankondigingen/overzicht/"
+        # Link opbouwen
+        pub_id = vind_veld(pub, ["publicatieid", "kenmerk", "uuid", "referentie"])
+        link = f"https://www.tenderned.nl/aankondigingen/overzicht/{pub_id}" if pub_id else "https://www.tenderned.nl/"
 
         eind_dt, actie_dt, status, badge, is_urgent = bereken_tijdlijn(pub_datum)
         route = match_inkooproute(dienst)
 
         gekwalificeerde_leads.append({
-            "dienst": dienst[:55] + "..." if len(dienst) > 55 else dienst,
-            "titel": titel[:80] + "..." if len(titel) > 80 else titel,
+            "dienst": dienst.replace("\n", " ").strip(),
+            "titel": titel.replace("\n", " ").strip(),
             "route": route,
             "startdatum": str(pub_datum)[:10],
             "einddatum": eind_dt,
@@ -398,7 +407,7 @@ def main():
             "link": link
         })
 
-    # Sorteer urgentie bovenaan (dichtstbijzijnde datum eerst)
+    # Sorteer urgentie bovenaan
     gekwalificeerde_leads.sort(key=lambda x: x["actiedatum"])
     genereer_microsite(gekwalificeerde_leads)
     print(f"Microsite gegenereerd in tenderned/index.html ({len(gekwalificeerde_leads)} leads).")
