@@ -120,7 +120,7 @@ def genereer_microsite(leads):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eraneos Tender Pipeline & Forecast</title>
+    <title>BobSVP TN Tender Pipeline & Forecast</title>
     <style>
         :root {{
             --primary: #0f172a;
@@ -248,7 +248,7 @@ def genereer_microsite(leads):
     <div class="container">
         <div class="header">
             <div>
-                <h1>Aanbestedingen & Heraanbesteding Forecast</h1>
+                <h1>BobSVP TN Tender Pipeline & Forecast</h1>
                 <div class="timestamp">Laatste update: {nu_str}</div>
             </div>
             <a href="/" style="font-size: 0.85rem; color: var(--accent); text-decoration: none; font-weight: 500;">← Terug naar hoofdsite</a>
