@@ -33,6 +33,7 @@ def fetch_tenderned_publicaties():
                 print(f"Pagina {page} succesvol binnengehaald ({len(data)} items).")
                 time.sleep(0.5)
             else:
+                print(f"Gestopt bij pagina {page} vanwege statuscode {response.status_code}")
                 break
         except Exception as e:
             print(f"Fout bij ophalen TenderNed data pagina {page}: {e}")
@@ -41,7 +42,7 @@ def fetch_tenderned_publicaties():
     return alle_publicaties
 
 def kwalificeer_tender(item):
-    """Walst de JSON plat om te checken of er ergens een keyword in verstopt zit."""
+    """Walst de JSON plat om te checken of er ergens een strategisch keyword in verstopt zit."""
     volledige_tekst = json.dumps(item).lower()
 
     if any(neg in volledige_tekst for neg in NEGATIEVE_KEYWORDS):
@@ -52,37 +53,55 @@ def kwalificeer_tender(item):
 
     return False, "Geen overlap"
 
-def vind_sleutel(data, verwachte_sleutels):
-    """Recursieve bloedhond die diep verborgen API-velden opspoort."""
+def slimme_extractie(data, keywords, level=0):
+    """
+    Graaft meedogenloos door alle API-nestings totdat hij de gevraagde data vindt.
+    Zoekt op exacte keys óf delen van keys (bijv. 'publicatieTitel' matcht met 'titel').
+    """
+    if level > 4 or not data: 
+        return None
+
     if isinstance(data, dict):
-        # Controleer dit niveau
-        for sleutel in verwachte_sleutels:
-            if sleutel in data:
-                waarde = data[sleutel]
-                if isinstance(waarde, str) and waarde.strip():
-                    return waarde.strip()
-                elif isinstance(waarde, dict) and "naam" in waarde:
-                    return str(waarde["naam"]).strip()
-                elif isinstance(waarde, dict) and "waarde" in waarde:
-                    return str(waarde["waarde"]).strip()
-                elif isinstance(waarde, list) and len(waarde) > 0 and isinstance(waarde[0], str):
-                    return str(waarde[0]).strip()
-        
-        # Graaf een niveau dieper
-        for _, waarde in data.items():
-            gevonden = vind_sleutel(waarde, verwachte_sleutels)
-            if gevonden:
-                return gevonden
-                
+        # Controleer eerst alle sleutels op het huidige niveau
+        for k, v in data.items():
+            k_lower = k.lower()
+            
+            # Match logica: is de sleutel relevant?
+            match = False
+            for kw in keywords:
+                if kw == k_lower:
+                    match = True
+                elif len(kw) >= 4 and kw in k_lower:
+                    match = True
+                elif kw == 'id' and k_lower in ['id', 'uuid', 'guid', 'kenmerk']:
+                    match = True
+            
+            if match:
+                if isinstance(v, str) and v.strip() and len(v) < 300:
+                    return v.strip()
+                elif isinstance(v, (int, float)):
+                    return str(v)
+                elif isinstance(v, dict):
+                    # Vaak stopt TenderNed namen in een sub-object {"naam": "MinDef"}
+                    if 'naam' in v and isinstance(v['naam'], str): return v['naam']
+                    if 'name' in v and isinstance(v['name'], str): return v['name']
+
+        # Niks gevonden? Graaf een niveau dieper.
+        for k, v in data.items():
+            # Sla gigantische beschrijvingsvelden over om rekenkracht te sparen
+            if k.lower() in ['omschrijving', 'beschrijving', 'description']: continue
+            res = slimme_extractie(v, keywords, level + 1)
+            if res: return res
+
     elif isinstance(data, list):
         for item in data:
-            gevonden = vind_sleutel(item, verwachte_sleutels)
-            if gevonden:
-                return gevonden
-                
+            res = slimme_extractie(item, keywords, level + 1)
+            if res: return res
+
     return None
 
 def match_inkooproute(aanbestedende_dienst):
+    if not aanbestedende_dienst: return "Vrije inschrijving / Consortium vormen"
     dienst_str = str(aanbestedende_dienst).lower()
     for sleutel, route in MANTEL_ROUTES.items():
         if sleutel.lower() in dienst_str:
@@ -91,7 +110,8 @@ def match_inkooproute(aanbestedende_dienst):
 
 def bereken_tijdlijn(publicatie_datum_str):
     try:
-        start_dt = datetime.strptime(publicatie_datum_str[:10], "%Y-%m-%d")
+        # Pakt alleen de YYYY-MM-DD
+        start_dt = datetime.strptime(str(publicatie_datum_str)[:10], "%Y-%m-%d")
     except Exception:
         start_dt = datetime.now()
 
@@ -134,9 +154,9 @@ def genereer_microsite(leads):
             <td class="title-cell">{lead['titel']}</td>
             <td><span class="route-tag">{lead['route']}</span></td>
             <td>{lead['startdatum']}</td>
-            <td>{lead['einddatum']}</td>
             <td><strong>{lead['actiedatum']}</strong></td>
             <td><span class="badge {lead['badge_class']}">{lead['status']}</span></td>
+            <td><a href="{lead['link']}" target="_blank" class="btn-link">Bekijk</a></td>
         </tr>
         """
 
@@ -164,7 +184,7 @@ def genereer_microsite(leads):
             padding: 30px;
         }}
         .container {{
-            max-width: 1250px;
+            max-width: 1350px;
             margin: 0 auto;
         }}
         .header {{
@@ -267,6 +287,21 @@ def genereer_microsite(leads):
             border-radius: 4px;
             display: inline-block;
         }}
+        .btn-link {{
+            background-color: var(--accent);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+            transition: background-color 0.2s;
+            white-space: nowrap;
+        }}
+        .btn-link:hover {{
+            background-color: #1d4ed8;
+        }}
     </style>
 </head>
 <body>
@@ -302,13 +337,13 @@ def genereer_microsite(leads):
             <table id="tenderTable">
                 <thead>
                     <tr>
-                        <th>Aanbestedende Dienst</th>
-                        <th>Titel</th>
+                        <th style="width: 20%;">Aanbestedende Dienst</th>
+                        <th style="width: 30%;">Titel</th>
                         <th>Inkooproute</th>
-                        <th>Startdatum</th>
-                        <th>Verwachte Einddatum</th>
+                        <th>Gepubliceerd</th>
                         <th>Actiedatum Acquisitie</th>
                         <th>Status</th>
+                        <th>Actie</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -344,16 +379,20 @@ def main():
         if not is_fit:
             continue
 
-        # De nieuwe recursieve bloedhond in actie:
-        dienst = vind_sleutel(pub, ["aanbestedendeDienst", "naamAanbestedendeDienst", "organisatie", "organisatienaam", "publicerendOndernemer", "naam", "onderneming"]) or "Onbekend"
-        titel = vind_sleutel(pub, ["titel", "publicatieTitel", "opdrachtTitel", "korteBeschrijving", "naamAanbesteding"]) or "Zonder titel"
-        pub_datum = vind_sleutel(pub, ["publicatieDatum", "datumPublicatie"]) or datetime.now().strftime("%Y-%m-%d")
+        # Nu graven we door alle lagen van de JSON heen:
+        dienst = slimme_extractie(pub, ["aanbestedendedienst", "organisatie", "buyer", "onderneming", "klant", "authority"]) or "Onbekend"
+        titel = slimme_extractie(pub, ["titel", "title", "opdrachtnaam", "benaming", "projectnaam"]) or "Zonder titel"
+        pub_datum = slimme_extractie(pub, ["publicatiedatum", "datum", "date", "published"]) or datetime.now().strftime("%Y-%m-%d")
+        
+        # We pakken het ID voor de klikbare link
+        pub_id = slimme_extractie(pub, ["publicatieid", "id", "tenderid", "uuid", "kenmerk"])
+        link = f"https://www.tenderned.nl/aankondigingen/overzicht/{pub_id}" if pub_id else "https://www.tenderned.nl/aankondigingen/overzicht/"
 
         eind_dt, actie_dt, status, badge, is_urgent = bereken_tijdlijn(pub_datum)
         route = match_inkooproute(dienst)
 
         gekwalificeerde_leads.append({
-            "dienst": dienst[:60] + "..." if len(dienst) > 60 else dienst,  # Voorkom extreem lange teksten in de tabel
+            "dienst": dienst[:60] + "..." if len(dienst) > 60 else dienst,
             "titel": titel[:90] + "..." if len(titel) > 90 else titel,
             "route": route,
             "startdatum": str(pub_datum)[:10],
@@ -361,9 +400,11 @@ def main():
             "actiedatum": actie_dt,
             "status": status,
             "badge_class": badge,
-            "is_urgent": is_urgent
+            "is_urgent": is_urgent,
+            "link": link
         })
 
+    # Sorteer urgentie bovenaan (dichtstbijzijnde datum eerst)
     gekwalificeerde_leads.sort(key=lambda x: x["actiedatum"])
     genereer_microsite(gekwalificeerde_leads)
     print(f"Microsite gegenereerd in tenderned/index.html ({len(gekwalificeerde_leads)} leads).")
