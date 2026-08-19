@@ -28,8 +28,9 @@
     "Alliander": "Directe Mantel (ODS)",
     "DICTU": "Onderaannemer via Circle8 / ItaQ",
     "Gemeente Amsterdam": "Onderaannemer via Sogeti",
-    "Rijksoverheid": "Onderaannemer via Circle8 / ItaQ (IMOA/RVICTO)",
-    "Financiën": "Onderaannemer via Circle8 / ItaQ",
-    "Infrastructuur en Waterstaat": "Onderaannemer via Circle8 / ItaQ"
+    "Gemeente": "Onderaannemer via [Jullie Broker voor Gemeentes]",
+    "Stichting": "Vrije inschrijving (of vul mantel in)",
+    "Rijksoverheid": "Onderaannemer via Circle8 / ItaQ",
+    "Universiteit": "Onderaannemer via [Jullie Broker]"
   }
 }
