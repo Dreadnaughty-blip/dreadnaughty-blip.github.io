@@ -34,4 +34,4 @@ jobs:
           git config --local user.name "GitHub Action Bot"
           git add tenderned/index.html
           git commit -m "Auto-update: Tender microsite update [skip ci]" || exit 0
-          git push origin main
+          git push origin master
