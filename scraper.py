@@ -33,7 +33,6 @@ def fetch_tenderned_publicaties():
                 print(f"Pagina {page} succesvol binnengehaald ({len(data)} items).")
                 time.sleep(0.5)
             else:
-                print(f"Gestopt bij pagina {page} vanwege statuscode {response.status_code}")
                 break
         except Exception as e:
             print(f"Fout bij ophalen TenderNed data pagina {page}: {e}")
@@ -42,7 +41,7 @@ def fetch_tenderned_publicaties():
     return alle_publicaties
 
 def kwalificeer_tender(item):
-    """Walst de JSON plat om te checken of er ergens een strategisch keyword in verstopt zit."""
+    """Checkt of strategische keywords ergens in het document staan."""
     volledige_tekst = json.dumps(item).lower()
 
     if any(neg in volledige_tekst for neg in NEGATIEVE_KEYWORDS):
@@ -53,55 +52,49 @@ def kwalificeer_tender(item):
 
     return False, "Geen overlap"
 
-def slimme_extractie(data, keywords, level=0):
+def vind_veld(data, verwachte_sleutels):
     """
-    Graaft meedogenloos door alle API-nestings totdat hij de gevraagde data vindt.
-    Zoekt op exacte keys óf delen van keys (bijv. 'publicatieTitel' matcht met 'titel').
+    Breadth-First Search (BFS) extractie.
+    Zoekt netjes eerst op de oppervlakte, vermijdt technische API-rotzooi (zoals _links) 
+    en filtert het foutieve "self" resultaat er hard uit.
     """
-    if level > 4 or not data: 
-        return None
-
-    if isinstance(data, dict):
-        # Controleer eerst alle sleutels op het huidige niveau
-        for k, v in data.items():
-            k_lower = k.lower()
+    queue = [data]
+    
+    while queue:
+        current = queue.pop(0)
+        
+        if isinstance(current, dict):
+            # 1. Kijk of het veld zich direct op dit niveau bevindt
+            for k, v in current.items():
+                if k.lower() in verwachte_sleutels:
+                    if isinstance(v, str) and v.strip() and v.strip().lower() != "self":
+                        return v.strip()
+                    elif isinstance(v, (int, float)):
+                        return str(v)
+                    elif isinstance(v, dict) and 'naam' in v:
+                        return str(v['naam']).strip()
+                    elif isinstance(v, dict) and 'name' in v:
+                        return str(v['name']).strip()
             
-            # Match logica: is de sleutel relevant?
-            match = False
-            for kw in keywords:
-                if kw == k_lower:
-                    match = True
-                elif len(kw) >= 4 and kw in k_lower:
-                    match = True
-                elif kw == 'id' and k_lower in ['id', 'uuid', 'guid', 'kenmerk']:
-                    match = True
-            
-            if match:
-                if isinstance(v, str) and v.strip() and len(v) < 300:
-                    return v.strip()
-                elif isinstance(v, (int, float)):
-                    return str(v)
-                elif isinstance(v, dict):
-                    # Vaak stopt TenderNed namen in een sub-object {"naam": "MinDef"}
-                    if 'naam' in v and isinstance(v['naam'], str): return v['naam']
-                    if 'name' in v and isinstance(v['name'], str): return v['name']
-
-        # Niks gevonden? Graaf een niveau dieper.
-        for k, v in data.items():
-            # Sla gigantische beschrijvingsvelden over om rekenkracht te sparen
-            if k.lower() in ['omschrijving', 'beschrijving', 'description']: continue
-            res = slimme_extractie(v, keywords, level + 1)
-            if res: return res
-
-    elif isinstance(data, list):
-        for item in data:
-            res = slimme_extractie(item, keywords, level + 1)
-            if res: return res
-
+            # 2. Zo niet, sla dan technische mappen (die beginnen met _) over en graaf dieper
+            for k, v in current.items():
+                if k.startswith('_'):  
+                    continue
+                if isinstance(v, (dict, list)):
+                    queue.append(v)
+                    
+        elif isinstance(current, list):
+            for item in current:
+                if isinstance(item, (dict, list)):
+                    queue.append(item)
+                
     return None
 
 def match_inkooproute(aanbestedende_dienst):
-    if not aanbestedende_dienst: return "Vrije inschrijving / Consortium vormen"
+    """Koppelt de klant aan de ingestelde Eraneos inkooproute uit config.json."""
+    if not aanbestedende_dienst or aanbestedende_dienst == "Onbekend":
+        return "Vrije inschrijving / Consortium vormen"
+        
     dienst_str = str(aanbestedende_dienst).lower()
     for sleutel, route in MANTEL_ROUTES.items():
         if sleutel.lower() in dienst_str:
@@ -110,7 +103,6 @@ def match_inkooproute(aanbestedende_dienst):
 
 def bereken_tijdlijn(publicatie_datum_str):
     try:
-        # Pakt alleen de YYYY-MM-DD
         start_dt = datetime.strptime(str(publicatie_datum_str)[:10], "%Y-%m-%d")
     except Exception:
         start_dt = datetime.now()
@@ -154,6 +146,7 @@ def genereer_microsite(leads):
             <td class="title-cell">{lead['titel']}</td>
             <td><span class="route-tag">{lead['route']}</span></td>
             <td>{lead['startdatum']}</td>
+            <td>{lead['einddatum']}</td>
             <td><strong>{lead['actiedatum']}</strong></td>
             <td><span class="badge {lead['badge_class']}">{lead['status']}</span></td>
             <td><a href="{lead['link']}" target="_blank" class="btn-link">Bekijk</a></td>
@@ -184,7 +177,7 @@ def genereer_microsite(leads):
             padding: 30px;
         }}
         .container {{
-            max-width: 1350px;
+            max-width: 1400px;
             margin: 0 auto;
         }}
         .header {{
@@ -337,17 +330,18 @@ def genereer_microsite(leads):
             <table id="tenderTable">
                 <thead>
                     <tr>
-                        <th style="width: 20%;">Aanbestedende Dienst</th>
-                        <th style="width: 30%;">Titel</th>
-                        <th>Inkooproute</th>
+                        <th style="width: 18%;">Aanbestedende Dienst</th>
+                        <th style="width: 25%;">Titel</th>
+                        <th style="width: 15%;">Inkooproute</th>
                         <th>Gepubliceerd</th>
+                        <th>Verwachte Einddatum</th>
                         <th>Actiedatum Acquisitie</th>
                         <th>Status</th>
                         <th>Actie</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {rijen_html if rijen_html else "<tr><td colspan='7'>Geen items gevonden.</td></tr>"}
+                    {rijen_html if rijen_html else "<tr><td colspan='8'>Geen items gevonden.</td></tr>"}
                 </tbody>
             </table>
         </div>
@@ -379,21 +373,21 @@ def main():
         if not is_fit:
             continue
 
-        # Nu graven we door alle lagen van de JSON heen:
-        dienst = slimme_extractie(pub, ["aanbestedendedienst", "organisatie", "buyer", "onderneming", "klant", "authority"]) or "Onbekend"
-        titel = slimme_extractie(pub, ["titel", "title", "opdrachtnaam", "benaming", "projectnaam"]) or "Zonder titel"
-        pub_datum = slimme_extractie(pub, ["publicatiedatum", "datum", "date", "published"]) or datetime.now().strftime("%Y-%m-%d")
+        # Aanroep van de nieuwe robuuste extractie functie
+        dienst = vind_veld(pub, ["aanbestedendedienst", "publicerendondernemer", "organisatie", "organisatienaam", "buyer", "klant", "authority"]) or "Onbekend"
+        titel = vind_veld(pub, ["titel", "publicatietitel", "opdrachttitel", "kortebeschrijving", "naamaanbesteding", "title", "naam"]) or "Zonder titel"
+        pub_datum = vind_veld(pub, ["publicatiedatum", "datumpublicatie", "datum", "date", "published"]) or datetime.now().strftime("%Y-%m-%d")
         
-        # We pakken het ID voor de klikbare link
-        pub_id = slimme_extractie(pub, ["publicatieid", "id", "tenderid", "uuid", "kenmerk"])
+        # Link opbouwen via het gevonden Publicatie ID
+        pub_id = vind_veld(pub, ["publicatieid", "id", "tenderid", "uuid", "kenmerk"])
         link = f"https://www.tenderned.nl/aankondigingen/overzicht/{pub_id}" if pub_id else "https://www.tenderned.nl/aankondigingen/overzicht/"
 
         eind_dt, actie_dt, status, badge, is_urgent = bereken_tijdlijn(pub_datum)
         route = match_inkooproute(dienst)
 
         gekwalificeerde_leads.append({
-            "dienst": dienst[:60] + "..." if len(dienst) > 60 else dienst,
-            "titel": titel[:90] + "..." if len(titel) > 90 else titel,
+            "dienst": dienst[:55] + "..." if len(dienst) > 55 else dienst,
+            "titel": titel[:80] + "..." if len(titel) > 80 else titel,
             "route": route,
             "startdatum": str(pub_datum)[:10],
             "einddatum": eind_dt,
