@@ -1,0 +1,44 @@
+JSON
+{
+  "instellingen": {
+    "voorbereidingstijd_overheid_maanden": 9,
+    "standaard_looptijd_maanden": 48
+  },
+  "strategische_cpv_codes": [
+    "79410000-1",
+    "72220000-3",
+    "72000000-5",
+    "79420000-4"
+  ],
+  "positieve_keywords": [
+    "strategie",
+    "architectuur",
+    "advies",
+    "siam",
+    "transformatie",
+    "innovatie",
+    "besluitvorming",
+    "portfolio",
+    "governance"
+  ],
+  "negatieve_keywords": [
+    "werkplekbeheer",
+    "hardware",
+    "detachering",
+    "kabel",
+    "onderhoud",
+    "helpdesk",
+    "licenties",
+    "infrastructuurbeheer"
+  ],
+  "mantel_inkooproutes": {
+    "Defensie": "Directe Mantel (Enterprise Architectuur)",
+    "Europese Commissie": "Directe Mantel (HACS)",
+    "Alliander": "Directe Mantel (ODS)",
+    "DICTU": "Onderaannemer via Circle8 / ItaQ",
+    "Gemeente Amsterdam": "Onderaannemer via Sogeti",
+    "Rijksoverheid": "Onderaannemer via Circle8 / ItaQ (IMOA/RVICTO)",
+    "Financiën": "Onderaannemer via Circle8 / ItaQ",
+    "Infrastructuur en Waterstaat": "Onderaannemer via Circle8 / ItaQ"
+  }
+}
