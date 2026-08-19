@@ -21,6 +21,23 @@
     "governance"
   ],
   "negatieve_keywords": [
+    "werkplekbeheer",
+    "hardware",
+    "detachering",
+    "kabel",
+    "onderhoud",
+    "helpdesk",
+    "licenties",
+    "infrastructuurbeheer",
+    "schoonmaak",
+    "catering",
+    "laptops",
+    "telefonie",
+    "printers",
+    "datacenters",
+    "serverbeheer",
+    "kantoorartikelen",
+    "uitzendkrachten"
   ],
   "mantel_inkooproutes": {
     "Defensie": "Directe Mantel (Enterprise Architectuur)",
