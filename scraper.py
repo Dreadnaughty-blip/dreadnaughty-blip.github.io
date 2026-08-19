@@ -2,6 +2,7 @@ import json
 import os
 import requests
 import time
+import zoneinfo
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
@@ -18,28 +19,30 @@ MANTEL_ROUTES = config.get("mantel_inkooproutes", {})
 LEAD_TIME_MONTHS = config.get("instellingen", {}).get("voorbereidingstijd_overheid_maanden", 9)
 DEFAULT_DURATION = config.get("instellingen", {}).get("standaard_looptijd_maanden", 48)
 
+# Nederlandse tijdzone instellen
+TZ_NL = zoneinfo.ZoneInfo("Europe/Amsterdam")
+
 def fetch_tenderned_publicaties():
-    """Tijdmachine: Haalt tot ~8 jaar aan historie op door 1.000 pagina's te scrapen."""
+    """Tijdmachine: Haalt tot ~8 jaar aan historie op door 2.000 pagina's te scrapen (200.000 items)."""
     alle_publicaties = []
     headers = {"Accept": "application/json"}
     
-    # 1000 pagina's = 100.000 publicaties uit het verleden
-    for page in range(1000):
+    for page in range(2000):
         url = f"https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page={page}&size=100"
         try:
             response = requests.get(url, headers=headers, timeout=30)
             if response.status_code == 200:
                 data = response.json().get("content", [])
                 if not data:
-                    break # Einde van de TenderNed database bereikt
+                    break # Einde database bereikt
                 
                 alle_publicaties.extend(data)
                 
-                # Iedere 50 pagina's een update in de GitHub log
+                # Feedback voor in de GitHub log
                 if page % 50 == 0:
                     print(f"Tijdmachine draait: Pagina {page} (Jaar ~{str(data[0].get('publicatieDatum'))[:4]})...")
                 
-                time.sleep(0.2) # Iets sneller scrapen
+                time.sleep(0.1) # Korte pauze om blokkades te voorkomen
             else:
                 break
         except Exception as e:
@@ -119,66 +122,63 @@ def match_inkooproute(aanbestedende_dienst):
     return "Vrije inschrijving / Consortium vormen"
 
 def bereken_tijdlijn(publicatie_datum_str, ruwe_data):
-    # 1. Probeer de échte looptijd uit het document te trekken
+    # Probeer specifieke looptijd te vinden, anders default (48 mnd)
     looptijd_str = vind_veld(ruwe_data, ["looptijdinmaanden", "contractduration", "duration", "looptijd", "duur"])
-    
     looptijd_maanden = DEFAULT_DURATION
     if looptijd_str:
-        try:
-            looptijd_maanden = int(float(looptijd_str))
-        except:
-            pass
+        try: looptijd_maanden = int(float(looptijd_str))
+        except: pass
 
     try:
         start_dt = datetime.strptime(str(publicatie_datum_str)[:10], "%Y-%m-%d")
     except Exception:
-        start_dt = datetime.now()
+        start_dt = datetime.now(TZ_NL).replace(tzinfo=None)
 
     eind_dt = start_dt + relativedelta(months=looptijd_maanden)
     actie_dt = eind_dt - relativedelta(months=LEAD_TIME_MONTHS)
-    nu = datetime.now()
+    
+    # Gebruik Nederlandse tijd voor het vaststellen van 'nu'
+    nu = datetime.now(TZ_NL).replace(tzinfo=None)
 
-    # Is het contract al meer dan 12 maanden geleden verlopen? Dan is het een gepasseerd station.
-    is_te_laat = actie_dt < (nu - relativedelta(months=12))
-
-    if nu >= eind_dt:
-        status = "Verlopen / Heraanbesteding"
+    # Bepaal de status en de sorteerprioriteit
+    if actie_dt < (nu - relativedelta(months=18)):
+        aandacht = "🔍 Check (Mogelijk 8jr looptijd)"
+        badge_class = "badge-secondary"
+        sort_score = 4
+    elif actie_dt <= nu:
+        aandacht = "🚨 NU ACTIE"
         badge_class = "badge-danger"
-        is_urgent = True
-    elif nu >= actie_dt:
-        status = "URGENT: Voorbereiding gaande"
-        badge_class = "badge-danger"
-        is_urgent = True
+        sort_score = 1
     elif (actie_dt - nu).days <= 180:
-        status = "Actie binnen 6 mnd"
+        aandacht = "⚠️ Binnen 6 mnd"
         badge_class = "badge-warning"
-        is_urgent = False
+        sort_score = 2
     else:
-        status = "Lopend"
+        aandacht = "✅ Lopend"
         badge_class = "badge-success"
-        is_urgent = False
+        sort_score = 3
 
-    return eind_dt.strftime("%Y-%m-%d"), actie_dt.strftime("%Y-%m-%d"), status, badge_class, is_urgent, is_te_laat
+    return eind_dt.strftime("%Y-%m-%d"), actie_dt.strftime("%Y-%m-%d"), aandacht, badge_class, sort_score
 
 def genereer_microsite(leads):
     os.makedirs("tenderned", exist_ok=True)
-    nu_str = datetime.now().strftime("%d-%m-%Y %H:%M")
+    nu_str = datetime.now(TZ_NL).strftime("%d-%m-%Y %H:%M")
     
     totaal_leads = len(leads)
-    urgent_count = sum(1 for l in leads if l["is_urgent"])
+    urgent_count = sum(1 for l in leads if l["sort_score"] == 1)
     directe_mantel_count = sum(1 for l in leads if "Directe" in l["route"])
 
     rijen_html = ""
     for lead in leads:
         rijen_html += f"""
         <tr class="tender-row">
-            <td class="client-cell" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['dienst']}"><strong>{lead['dienst']}</strong></td>
-            <td class="title-cell" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['titel']}">{lead['titel']}</td>
+            <td class="client-cell" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['dienst']}"><strong>{lead['dienst']}</strong></td>
+            <td class="title-cell" style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['titel']}">{lead['titel']}</td>
             <td><span class="route-tag">{lead['route']}</span></td>
             <td>{lead['startdatum']}</td>
             <td>{lead['einddatum']}</td>
             <td><strong>{lead['actiedatum']}</strong></td>
-            <td><span class="badge {lead['badge_class']}">{lead['status']}</span></td>
+            <td><span class="badge {lead['badge_class']}">{lead['aandacht']}</span></td>
             <td><a href="{lead['link']}" target="_blank" class="btn-link">Bekijk</a></td>
         </tr>
         """
@@ -200,7 +200,7 @@ def genereer_microsite(leads):
             --border: #e2e8f0;
         }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text-main); margin: 0; padding: 30px; }}
-        .container {{ max-width: 1450px; margin: 0 auto; }}
+        .container {{ max-width: 1500px; margin: 0 auto; }}
         .header {{ display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 25px; border-bottom: 2px solid var(--border); padding-bottom: 15px; }}
         h1 {{ margin: 0; color: var(--primary); font-size: 1.6rem; letter-spacing: -0.5px; }}
         .timestamp {{ font-size: 0.85rem; color: var(--text-muted); }}
@@ -219,6 +219,7 @@ def genereer_microsite(leads):
         .badge-danger {{ background: #fee2e2; color: #991b1b; }}
         .badge-warning {{ background: #fef3c7; color: #92400e; }}
         .badge-success {{ background: #dcfce7; color: #166534; }}
+        .badge-secondary {{ background: #e2e8f0; color: #475569; }}
         .route-tag {{ font-size: 0.78rem; background: #e0f2fe; color: #0369a1; padding: 3px 8px; border-radius: 4px; display: inline-block; line-height: 1.3; }}
         .btn-link {{ background-color: var(--accent); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 0.75rem; font-weight: 600; display: inline-block; transition: background-color 0.2s; white-space: nowrap; }}
         .btn-link:hover {{ background-color: #1d4ed8; }}
@@ -229,22 +230,22 @@ def genereer_microsite(leads):
         <div class="header">
             <div>
                 <h1>BobSVP TN Tender Pipeline & Forecast</h1>
-                <div class="timestamp">Laatste update: {nu_str}</div>
+                <div class="timestamp">Laatste update: {nu_str} (Lokale Tijd)</div>
             </div>
             <a href="/" style="font-size: 0.85rem; color: var(--accent); text-decoration: none; font-weight: 500;">← Terug naar hoofdsite</a>
         </div>
 
         <div class="kpi-grid">
             <div class="kpi-card">
-                <div class="kpi-title">Actieve Pipeline Leads</div>
+                <div class="kpi-title">Totaal Gekwalificeerd</div>
                 <div class="kpi-value">{totaal_leads}</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-title">Directe Actie Vereist</div>
+                <div class="kpi-title">Nu Actie / Voorbereiden</div>
                 <div class="kpi-value" style="color: #b91c1c;">{urgent_count}</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-title">Directe Mantels</div>
+                <div class="kpi-title">Via Directe Mantels</div>
                 <div class="kpi-value" style="color: #0369a1;">{directe_mantel_count}</div>
             </div>
         </div>
@@ -257,13 +258,13 @@ def genereer_microsite(leads):
             <table id="tenderTable">
                 <thead>
                     <tr>
-                        <th style="width: 18%;">Aanbestedende Dienst</th>
+                        <th style="width: 15%;">Aanbestedende Dienst</th>
                         <th style="width: 25%;">Titel</th>
                         <th style="width: 15%;">Inkooproute / Mantel</th>
-                        <th style="width: 9%;">Gepubliceerd</th>
-                        <th style="width: 9%;">Einddatum</th>
-                        <th style="width: 10%;">Acquisitie Start</th>
-                        <th style="width: 9%;">Status</th>
+                        <th style="width: 8%;">Gepubliceerd</th>
+                        <th style="width: 8%;">Einddatum</th>
+                        <th style="width: 9%;">Acquisitie Start</th>
+                        <th style="width: 15%;">Aandacht</th>
                         <th style="width: 5%;">Actie</th>
                     </tr>
                 </thead>
@@ -302,17 +303,19 @@ def main():
 
         dienst = vind_veld(pub, ["aanbestedendedienst", "organisatie", "opdrachtgever", "publicerendondernemer"]) or "Onbekend"
         titel = vind_titel(pub)
-        pub_datum = vind_veld(pub, ["publicatiedatum", "datumpublicatie"]) or datetime.now().strftime("%Y-%m-%d")
+        pub_datum = vind_veld(pub, ["publicatiedatum", "datumpublicatie"]) or datetime.now(TZ_NL).strftime("%Y-%m-%d")
+        
+        # Stop extreem oude vervuiling (bijv data uit 2012)
+        try:
+            pub_jaar = int(str(pub_datum)[:4])
+            if pub_jaar < 2016:
+                continue
+        except: pass
         
         pub_id = vind_veld(pub, ["publicatieid", "kenmerk", "uuid", "referentie"])
         link = f"https://www.tenderned.nl/aankondigingen/overzicht/{pub_id}" if pub_id else "https://www.tenderned.nl/"
 
-        eind_dt, actie_dt, status, badge, is_urgent, is_te_laat = bereken_tijdlijn(pub_datum, pub)
-        
-        # De absolute 'Clutter Filter': We verbergen wat al verjaard is.
-        if is_te_laat:
-            continue
-
+        eind_dt, actie_dt, aandacht, badge, sort_score = bereken_tijdlijn(pub_datum, pub)
         route = match_inkooproute(dienst)
 
         gekwalificeerde_leads.append({
@@ -322,14 +325,15 @@ def main():
             "startdatum": str(pub_datum)[:10],
             "einddatum": eind_dt,
             "actiedatum": actie_dt,
-            "status": status,
+            "aandacht": aandacht,
             "badge_class": badge,
-            "is_urgent": is_urgent,
+            "sort_score": sort_score,
             "link": link
         })
 
-    # Sorteer urgentie bovenaan
-    gekwalificeerde_leads.sort(key=lambda x: x["actiedatum"])
+    # Magie zit hier: sorteer EERST op de categorie (score 1 tot 4), DAARNA op de datum
+    gekwalificeerde_leads.sort(key=lambda x: (x["sort_score"], x["actiedatum"]))
+    
     genereer_microsite(gekwalificeerde_leads)
     print(f"Microsite gegenereerd in tenderned/index.html ({len(gekwalificeerde_leads)} leads).")
 
