@@ -19,18 +19,27 @@ LEAD_TIME_MONTHS = config.get("instellingen", {}).get("voorbereidingstijd_overhe
 DEFAULT_DURATION = config.get("instellingen", {}).get("standaard_looptijd_maanden", 48)
 
 def fetch_tenderned_publicaties():
+    """Tijdmachine: Haalt tot ~8 jaar aan historie op door 1.000 pagina's te scrapen."""
     alle_publicaties = []
     headers = {"Accept": "application/json"}
     
-    for page in range(100):
+    # 1000 pagina's = 100.000 publicaties uit het verleden
+    for page in range(1000):
         url = f"https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page={page}&size=100"
         try:
             response = requests.get(url, headers=headers, timeout=30)
             if response.status_code == 200:
                 data = response.json().get("content", [])
+                if not data:
+                    break # Einde van de TenderNed database bereikt
+                
                 alle_publicaties.extend(data)
-                print(f"Pagina {page} succesvol binnengehaald ({len(data)} items).")
-                time.sleep(0.5)
+                
+                # Iedere 50 pagina's een update in de GitHub log
+                if page % 50 == 0:
+                    print(f"Tijdmachine draait: Pagina {page} (Jaar ~{str(data[0].get('publicatieDatum'))[:4]})...")
+                
+                time.sleep(0.2) # Iets sneller scrapen
             else:
                 break
         except Exception as e:
@@ -51,7 +60,6 @@ def kwalificeer_tender(item):
     return False, "Geen overlap"
 
 def vind_veld(data, verwachte_sleutels_delen):
-    """Gebruikt voor de naam van de klant en datums"""
     queue = [data]
     while queue:
         current = queue.pop(0)
@@ -61,6 +69,8 @@ def vind_veld(data, verwachte_sleutels_delen):
                 if any(deel in k_lower for deel in verwachte_sleutels_delen):
                     if isinstance(v, str) and v.strip() and v.strip().lower() != "self":
                         return v.strip()
+                    elif isinstance(v, (int, float)):
+                        return str(v)
             
             for k, v in current.items():
                 if not k.startswith('_') and isinstance(v, (dict, list)):
@@ -72,20 +82,16 @@ def vind_veld(data, verwachte_sleutels_delen):
     return None
 
 def vind_titel(data):
-    """Specifieke kraker voor de Aanbestedingstitel"""
     exacte_sleutels = ['opdrachtnaam', 'aanbestedingnaam', 'publicatienaam', 'benaming', 'titel', 'title', 'naamopdracht', 'projectnaam', 'omschrijving', 'korteomschrijving']
-    
     queue = [data]
     while queue:
         current = queue.pop(0)
         if isinstance(current, dict):
-            # 1. Probeer de bekende titelsleutels
             for k, v in current.items():
                 if k.lower() in exacte_sleutels:
                     if isinstance(v, str) and v.strip() and v.strip().lower() != "self":
                         return v.strip()
             
-            # 2. Kijk of 'naam' in een relevante submap zit (zoals 'aanbesteding')
             for k, v in current.items():
                 if k.lower() in ['aanbesteding', 'opdracht', 'tender', 'publicatie', 'aankondiging']:
                     if isinstance(v, dict):
@@ -96,12 +102,10 @@ def vind_titel(data):
             for k, v in current.items():
                 if not k.startswith('_') and isinstance(v, (dict, list)):
                     queue.append(v)
-                    
         elif isinstance(current, list):
             for item in current:
                 if isinstance(item, (dict, list)):
                     queue.append(item)
-                    
     return "Zonder titel"
 
 def match_inkooproute(aanbestedende_dienst):
@@ -114,15 +118,28 @@ def match_inkooproute(aanbestedende_dienst):
             return route
     return "Vrije inschrijving / Consortium vormen"
 
-def bereken_tijdlijn(publicatie_datum_str):
+def bereken_tijdlijn(publicatie_datum_str, ruwe_data):
+    # 1. Probeer de échte looptijd uit het document te trekken
+    looptijd_str = vind_veld(ruwe_data, ["looptijdinmaanden", "contractduration", "duration", "looptijd", "duur"])
+    
+    looptijd_maanden = DEFAULT_DURATION
+    if looptijd_str:
+        try:
+            looptijd_maanden = int(float(looptijd_str))
+        except:
+            pass
+
     try:
         start_dt = datetime.strptime(str(publicatie_datum_str)[:10], "%Y-%m-%d")
     except Exception:
         start_dt = datetime.now()
 
-    eind_dt = start_dt + relativedelta(months=DEFAULT_DURATION)
+    eind_dt = start_dt + relativedelta(months=looptijd_maanden)
     actie_dt = eind_dt - relativedelta(months=LEAD_TIME_MONTHS)
     nu = datetime.now()
+
+    # Is het contract al meer dan 12 maanden geleden verlopen? Dan is het een gepasseerd station.
+    is_te_laat = actie_dt < (nu - relativedelta(months=12))
 
     if nu >= eind_dt:
         status = "Verlopen / Heraanbesteding"
@@ -141,7 +158,7 @@ def bereken_tijdlijn(publicatie_datum_str):
         badge_class = "badge-success"
         is_urgent = False
 
-    return eind_dt.strftime("%Y-%m-%d"), actie_dt.strftime("%Y-%m-%d"), status, badge_class, is_urgent
+    return eind_dt.strftime("%Y-%m-%d"), actie_dt.strftime("%Y-%m-%d"), status, badge_class, is_urgent, is_te_laat
 
 def genereer_microsite(leads):
     os.makedirs("tenderned", exist_ok=True)
@@ -182,13 +199,7 @@ def genereer_microsite(leads):
             --text-muted: #64748b;
             --border: #e2e8f0;
         }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--bg);
-            color: var(--text-main);
-            margin: 0;
-            padding: 30px;
-        }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text-main); margin: 0; padding: 30px; }}
         .container {{ max-width: 1450px; margin: 0 auto; }}
         .header {{ display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 25px; border-bottom: 2px solid var(--border); padding-bottom: 15px; }}
         h1 {{ margin: 0; color: var(--primary); font-size: 1.6rem; letter-spacing: -0.5px; }}
@@ -225,7 +236,7 @@ def genereer_microsite(leads):
 
         <div class="kpi-grid">
             <div class="kpi-card">
-                <div class="kpi-title">Relevante Leads</div>
+                <div class="kpi-title">Actieve Pipeline Leads</div>
                 <div class="kpi-value">{totaal_leads}</div>
             </div>
             <div class="kpi-card">
@@ -289,7 +300,6 @@ def main():
         if not is_fit:
             continue
 
-        # Extractie met de nieuwe functies
         dienst = vind_veld(pub, ["aanbestedendedienst", "organisatie", "opdrachtgever", "publicerendondernemer"]) or "Onbekend"
         titel = vind_titel(pub)
         pub_datum = vind_veld(pub, ["publicatiedatum", "datumpublicatie"]) or datetime.now().strftime("%Y-%m-%d")
@@ -297,7 +307,12 @@ def main():
         pub_id = vind_veld(pub, ["publicatieid", "kenmerk", "uuid", "referentie"])
         link = f"https://www.tenderned.nl/aankondigingen/overzicht/{pub_id}" if pub_id else "https://www.tenderned.nl/"
 
-        eind_dt, actie_dt, status, badge, is_urgent = bereken_tijdlijn(pub_datum)
+        eind_dt, actie_dt, status, badge, is_urgent, is_te_laat = bereken_tijdlijn(pub_datum, pub)
+        
+        # De absolute 'Clutter Filter': We verbergen wat al verjaard is.
+        if is_te_laat:
+            continue
+
         route = match_inkooproute(dienst)
 
         gekwalificeerde_leads.append({
@@ -313,6 +328,7 @@ def main():
             "link": link
         })
 
+    # Sorteer urgentie bovenaan
     gekwalificeerde_leads.sort(key=lambda x: x["actiedatum"])
     genereer_microsite(gekwalificeerde_leads)
     print(f"Microsite gegenereerd in tenderned/index.html ({len(gekwalificeerde_leads)} leads).")
