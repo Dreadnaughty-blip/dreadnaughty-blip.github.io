@@ -45,9 +45,11 @@ def fetch_tenderned_publicaties():
     return alle_publicaties
 
 def kwalificeer_tender(item):
-    titel = str(item.get("titel", "")).lower()
-    beschrijving = str(item.get("beschrijving", "")).lower()
-    volledige_tekst = f"{titel} {beschrijving}"
+    """
+    Walst de volledige JSON plat tot één string.
+    Hierdoor missen we nooit meer keywords, ongeacht hoe TenderNed de velden noemt.
+    """
+    volledige_tekst = json.dumps(item).lower()
 
     if any(neg in volledige_tekst for neg in NEGATIEVE_KEYWORDS):
         return False, "Uitsluitingscriterium"
@@ -319,9 +321,10 @@ def main():
         if not is_fit:
             continue
 
-        dienst = pub.get("aanbestedendeDienst", "Onbekend")
-        titel = pub.get("titel", "Zonder titel")
-        pub_datum = pub.get("publicatieDatum", datetime.now().strftime("%Y-%m-%d"))
+        # Probeer alle bekende synoniemen voor de kolomnamen af te vangen
+        dienst = pub.get("aanbestedendeDienst") or pub.get("naamAanbestedendeDienst") or pub.get("publicerendOndernemer") or pub.get("organisatie") or "Onbekend"
+        titel = pub.get("titel") or pub.get("publicatieTitel") or pub.get("opdrachtTitel") or pub.get("korteBeschrijving") or "Zonder titel"
+        pub_datum = pub.get("publicatieDatum") or pub.get("datumPublicatie") or datetime.now().strftime("%Y-%m-%d")
 
         eind_dt, actie_dt, status, badge, is_urgent = bereken_tijdlijn(pub_datum)
         route = match_inkooproute(dienst)
