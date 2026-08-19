@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eraneos Tender Pipeline & Forecast</title>
+    <style>
+        :root {
+            --primary: #0f172a;
+            --accent: #2563eb;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --text-main: #334155;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 30px;
+        }
+        .container {
+            max-width: 1250px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 25px;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 15px;
+        }
+        h1 {
+            margin: 0;
+            color: var(--primary);
+            font-size: 1.6rem;
+            letter-spacing: -0.5px;
+        }
+        .timestamp {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .kpi-card {
+            background: var(--card-bg);
+            padding: 18px 20px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .kpi-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .kpi-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-top: 6px;
+        }
+        .toolbar {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .search-box {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-size: 0.9rem;
+            background: var(--card-bg);
+        }
+        .table-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.88rem;
+        }
+        th {
+            background: #f8fafc;
+            color: var(--text-muted);
+            padding: 12px 16px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:last-child td { border-bottom: none; }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .badge-success { background: #dcfce7; color: #166534; }
+        .route-tag {
+            font-size: 0.78rem;
+            background: #e0f2fe;
+            color: #0369a1;
+            padding: 3px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Aanbestedingen & Heraanbesteding Forecast</h1>
+                <div class="timestamp">Laatste update: 19-08-2026 07:59</div>
+            </div>
+            <a href="/" style="font-size: 0.85rem; color: var(--accent); text-decoration: none; font-weight: 500;">← Terug naar hoofdsite</a>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-title">Relevante Leads</div>
+                <div class="kpi-value">0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Directe Actie Vereist</div>
+                <div class="kpi-value" style="color: #b91c1c;">0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">Directe Mantels</div>
+                <div class="kpi-value" style="color: #0369a1;">0</div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <input type="text" id="searchInput" class="search-box" placeholder="Filter op ministerie, broker, trefwoord..." onkeyup="filterTable()">
+        </div>
+
+        <div class="table-card">
+            <table id="tenderTable">
+                <thead>
+                    <tr>
+                        <th>Aanbestedende Dienst</th>
+                        <th>Titel</th>
+                        <th>Inkooproute</th>
+                        <th>Startdatum</th>
+                        <th>Verwachte Einddatum</th>
+                        <th>Actiedatum Acquisitie</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan='7'>Geen items gevonden.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function filterTable() {
+            const input = document.getElementById("searchInput").value.toLowerCase();
+            const rows = document.querySelectorAll("#tenderTable tbody tr.tender-row");
+            
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(input) ? "" : "none";
+            });
+        }
+    </script>
+</body>
+</html>
