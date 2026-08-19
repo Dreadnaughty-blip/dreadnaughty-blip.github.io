@@ -1,6 +1,7 @@
 import json
 import os
 import requests
+import time
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
@@ -18,15 +19,30 @@ LEAD_TIME_MONTHS = config.get("instellingen", {}).get("voorbereidingstijd_overhe
 DEFAULT_DURATION = config.get("instellingen", {}).get("standaard_looptijd_maanden", 48)
 
 def fetch_tenderned_publicaties():
-    url = "https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page=0&size=100"
+    """Haalt de laatste 10.000 publicaties op (100 pagina's) met ingebouwde adempauze."""
+    alle_publicaties = []
     headers = {"Accept": "application/json"}
-    try:
-        response = requests.get(url, headers=headers, timeout=30)
-        if response.status_code == 200:
-            return response.json().get("content", [])
-    except Exception as e:
-        print(f"Fout bij ophalen TenderNed data: {e}")
-    return []
+    
+    # We itereren door 100 pagina's (0 tot 99)
+    for page in range(100):
+        url = f"https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page={page}&size=100"
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            if response.status_code == 200:
+                data = response.json().get("content", [])
+                alle_publicaties.extend(data)
+                print(f"Pagina {page} succesvol binnengehaald ({len(data)} items).")
+                
+                # Een halve seconde wachten voorkomt een blokkade door de overheid
+                time.sleep(0.5)
+            else:
+                print(f"Gestopt bij pagina {page} vanwege statuscode {response.status_code}")
+                break
+        except Exception as e:
+            print(f"Fout bij ophalen TenderNed data pagina {page}: {e}")
+            break
+            
+    return alle_publicaties
 
 def kwalificeer_tender(item):
     titel = str(item.get("titel", "")).lower()
