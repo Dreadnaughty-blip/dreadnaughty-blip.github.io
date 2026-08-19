@@ -23,27 +23,40 @@ DEFAULT_DURATION = config.get("instellingen", {}).get("standaard_looptijd_maande
 TZ_NL = zoneinfo.ZoneInfo("Europe/Amsterdam")
 
 def fetch_tenderned_publicaties():
+    """Omzeilt de 10.000 limiet door de data per kwartaal vanaf 2017 op te halen."""
     alle_publicaties = []
     headers = {"Accept": "application/json"}
     
-    # 2000 pagina's = tot ~8 jaar terug
-    for page in range(2000):
-        url = f"https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page={page}&size=100"
-        try:
-            response = requests.get(url, headers=headers, timeout=30)
-            if response.status_code == 200:
-                data = response.json().get("content", [])
-                if not data: break
+    huidig_jaar = datetime.now(TZ_NL).year
+    
+    for jaar in range(2017, huidig_jaar + 1):
+        kwartalen = [
+            (f"{jaar}-01-01", f"{jaar}-03-31"),
+            (f"{jaar}-04-01", f"{jaar}-06-30"),
+            (f"{jaar}-07-01", f"{jaar}-09-30"),
+            (f"{jaar}-10-01", f"{jaar}-12-31")
+        ]
+        
+        for start_dt, eind_dt in kwartalen:
+            print(f"Tijdmachine: Scrapen van Q-periode {start_dt} t/m {eind_dt}...")
+            
+            for page in range(100): # Blijft veilig onder de 10k per kwartaal
+                url = f"https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page={page}&size=100&publicatieDatumVanaf={start_dt}&publicatieDatumTot={eind_dt}"
                 
-                alle_publicaties.extend(data)
-                if page % 50 == 0:
-                    print(f"Tijdmachine draait: Pagina {page} (Jaar ~{str(data[0].get('publicatieDatum'))[:4]})...")
-                time.sleep(0.1)
-            else:
-                break
-        except Exception as e:
-            print(f"Fout bij ophalen TenderNed: {e}")
-            break
+                try:
+                    response = requests.get(url, headers=headers, timeout=30)
+                    if response.status_code == 200:
+                        data = response.json().get("content", [])
+                        if not data:
+                            break # Einde van dit specifieke kwartaal bereikt
+                        
+                        alle_publicaties.extend(data)
+                        time.sleep(0.1) # Korte pauze tegen blokkades
+                    else:
+                        break
+                except Exception as e:
+                    print(f"Fout bij kwartaal {start_dt} pagina {page}: {e}")
+                    break
             
     return alle_publicaties
 
@@ -104,7 +117,7 @@ def bepaal_type_dienst(dienst_naam):
     return "Overig"
 
 def normaliseer_titel(titel):
-    """Verwijdert jaartallen en stopwoorden om tenders aan elkaar te koppelen"""
+    """Verwijdert jaartallen en stopwoorden om tenders netjes aan elkaar te koppelen (voor deduplicatie)"""
     t = str(titel).lower()
     t = re.sub(r'\b20\d{2}\b', '', t)
     for w in ['aanbesteding', 'europese', 'marktconsultatie', 'raamovereenkomst', 'nadere', 'overeenkomst', 'voor', 'inzake']:
@@ -132,8 +145,10 @@ def bereken_tijdlijn(publicatie_datum_str, ruwe_data):
     actie_dt = eind_dt - relativedelta(months=LEAD_TIME_MONTHS)
     nu = datetime.now(TZ_NL).replace(tzinfo=None)
 
+    # Filter: Als het contract langer dan 1 jaar geleden is afgelopen, verberg het.
+    # Als een contract UIT 2018 NU (of eind 2025/2026) afloopt, komt hij prachtig in beeld!
     if eind_dt < (nu - relativedelta(months=12)):
-        aandacht = "Verjaard"
+        aandacht = "Verjaard (Verborgen)"
         badge_class = "badge-secondary"
         sort_score = 5
     elif actie_dt <= nu:
@@ -223,7 +238,7 @@ def genereer_microsite(leads):
         <div class="header">
             <div>
                 <h1>BobSVP TN Tender Pipeline & Forecast</h1>
-                <div class="timestamp">Laatste update: {nu_str} (CEST)</div>
+                <div class="timestamp">Laatste update: {nu_str} (Lokaal)</div>
             </div>
             <a href="/" style="font-size: 0.85rem; color: var(--accent); text-decoration: none; font-weight: 500;">← Terug naar hoofdsite</a>
         </div>
@@ -234,7 +249,7 @@ def genereer_microsite(leads):
                 <div class="kpi-value">{totaal_leads}</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-title">Directe Actie (Nu / Korte termijn)</div>
+                <div class="kpi-title">Directe Actie (Nu of Binnenkort)</div>
                 <div class="kpi-value" style="color: #b91c1c;">{urgent_count}</div>
             </div>
         </div>
@@ -246,6 +261,7 @@ def genereer_microsite(leads):
             <button class="filter-btn" onclick="setFilter('Uitvoeringsorganisatie', event)">Uitvoeringsorganisaties</button>
             <button class="filter-btn" onclick="setFilter('Omgevingsdienst', event)">Omgevingsdiensten</button>
             <button class="filter-btn" onclick="setFilter('Onderwijs', event)">Onderwijs</button>
+            <button class="filter-btn" onclick="setFilter('Zorg', event)">Zorg & Welzijn</button>
         </div>
 
         <div class="toolbar">
@@ -308,7 +324,7 @@ def main():
     publicaties = fetch_tenderned_publicaties()
     
     ruwe_leads = []
-    # Stap 1: Filter en extract basis data
+    # Stap 1: Filter de strategische hits
     for pub in publicaties:
         is_fit, reden = kwalificeer_tender(pub)
         if not is_fit: continue
@@ -326,7 +342,7 @@ def main():
             "pub_id": pub_id
         })
 
-    # Stap 2: Groeperen, Tellen en Dedupliceren
+    # Stap 2: Groeperen en ontdubbelen
     project_groepen = {}
     for lead in ruwe_leads:
         norm_titel = normaliseer_titel(lead['titel'])
@@ -338,17 +354,15 @@ def main():
 
     gekwalificeerde_leads = []
     for key, leads_in_project in project_groepen.items():
-        # Tel de unieke jaren van publicatie om de cyclus te bepalen
         jaren = set([l['startdatum'][:4] for l in leads_in_project])
         cyclus_count = len(jaren)
         
-        # Sorteer op publicatiedatum (nieuwste eerst) en pak alleen de meest recente tender
         leads_in_project.sort(key=lambda x: x['startdatum'], reverse=True)
         laatste_lead = leads_in_project[0]
         
         eind_dt, actie_dt, aandacht, badge, sort_score, is_te_laat = bereken_tijdlijn(laatste_lead['startdatum'], laatste_lead['ruwe_data'])
         
-        # Verberg wat verjaard is
+        # De absolute opschoning: gooi 2012 lijken weg, bewaar wat NU/Binnenkort afloopt!
         if is_te_laat: continue
 
         link = f"https://www.tenderned.nl/aankondigingen/overzicht/{laatste_lead['pub_id']}" if laatste_lead['pub_id'] else "https://www.tenderned.nl/"
@@ -368,7 +382,7 @@ def main():
             "link": link
         })
 
-    # Stap 3: Sorteren (Eerst op prioriteit categorie, dan op datum)
+    # Sortering: Alles wat NU actie vereist staat direct bovenaan
     gekwalificeerde_leads.sort(key=lambda x: (x["sort_score"], x["actiedatum"]))
     
     genereer_microsite(gekwalificeerde_leads)
