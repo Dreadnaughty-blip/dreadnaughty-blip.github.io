@@ -19,11 +19,10 @@ LEAD_TIME_MONTHS = config.get("instellingen", {}).get("voorbereidingstijd_overhe
 DEFAULT_DURATION = config.get("instellingen", {}).get("standaard_looptijd_maanden", 48)
 
 def fetch_tenderned_publicaties():
-    """Haalt de laatste 10.000 publicaties op (100 pagina's) met ingebouwde adempauze."""
+    """Haalt de laatste 10.000 publicaties op (100 pagina's)."""
     alle_publicaties = []
     headers = {"Accept": "application/json"}
     
-    # We itereren door 100 pagina's (0 tot 99)
     for page in range(100):
         url = f"https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page={page}&size=100"
         try:
@@ -32,11 +31,8 @@ def fetch_tenderned_publicaties():
                 data = response.json().get("content", [])
                 alle_publicaties.extend(data)
                 print(f"Pagina {page} succesvol binnengehaald ({len(data)} items).")
-                
-                # Een halve seconde wachten voorkomt een blokkade door de overheid
                 time.sleep(0.5)
             else:
-                print(f"Gestopt bij pagina {page} vanwege statuscode {response.status_code}")
                 break
         except Exception as e:
             print(f"Fout bij ophalen TenderNed data pagina {page}: {e}")
@@ -45,10 +41,7 @@ def fetch_tenderned_publicaties():
     return alle_publicaties
 
 def kwalificeer_tender(item):
-    """
-    Walst de volledige JSON plat tot één string.
-    Hierdoor missen we nooit meer keywords, ongeacht hoe TenderNed de velden noemt.
-    """
+    """Walst de JSON plat om te checken of er ergens een keyword in verstopt zit."""
     volledige_tekst = json.dumps(item).lower()
 
     if any(neg in volledige_tekst for neg in NEGATIEVE_KEYWORDS):
@@ -58,6 +51,36 @@ def kwalificeer_tender(item):
         return True, "Strategische fit"
 
     return False, "Geen overlap"
+
+def vind_sleutel(data, verwachte_sleutels):
+    """Recursieve bloedhond die diep verborgen API-velden opspoort."""
+    if isinstance(data, dict):
+        # Controleer dit niveau
+        for sleutel in verwachte_sleutels:
+            if sleutel in data:
+                waarde = data[sleutel]
+                if isinstance(waarde, str) and waarde.strip():
+                    return waarde.strip()
+                elif isinstance(waarde, dict) and "naam" in waarde:
+                    return str(waarde["naam"]).strip()
+                elif isinstance(waarde, dict) and "waarde" in waarde:
+                    return str(waarde["waarde"]).strip()
+                elif isinstance(waarde, list) and len(waarde) > 0 and isinstance(waarde[0], str):
+                    return str(waarde[0]).strip()
+        
+        # Graaf een niveau dieper
+        for _, waarde in data.items():
+            gevonden = vind_sleutel(waarde, verwachte_sleutels)
+            if gevonden:
+                return gevonden
+                
+    elif isinstance(data, list):
+        for item in data:
+            gevonden = vind_sleutel(item, verwachte_sleutels)
+            if gevonden:
+                return gevonden
+                
+    return None
 
 def match_inkooproute(aanbestedende_dienst):
     dienst_str = str(aanbestedende_dienst).lower()
@@ -321,19 +344,19 @@ def main():
         if not is_fit:
             continue
 
-        # Probeer alle bekende synoniemen voor de kolomnamen af te vangen
-        dienst = pub.get("aanbestedendeDienst") or pub.get("naamAanbestedendeDienst") or pub.get("publicerendOndernemer") or pub.get("organisatie") or "Onbekend"
-        titel = pub.get("titel") or pub.get("publicatieTitel") or pub.get("opdrachtTitel") or pub.get("korteBeschrijving") or "Zonder titel"
-        pub_datum = pub.get("publicatieDatum") or pub.get("datumPublicatie") or datetime.now().strftime("%Y-%m-%d")
+        # De nieuwe recursieve bloedhond in actie:
+        dienst = vind_sleutel(pub, ["aanbestedendeDienst", "naamAanbestedendeDienst", "organisatie", "organisatienaam", "publicerendOndernemer", "naam", "onderneming"]) or "Onbekend"
+        titel = vind_sleutel(pub, ["titel", "publicatieTitel", "opdrachtTitel", "korteBeschrijving", "naamAanbesteding"]) or "Zonder titel"
+        pub_datum = vind_sleutel(pub, ["publicatieDatum", "datumPublicatie"]) or datetime.now().strftime("%Y-%m-%d")
 
         eind_dt, actie_dt, status, badge, is_urgent = bereken_tijdlijn(pub_datum)
         route = match_inkooproute(dienst)
 
         gekwalificeerde_leads.append({
-            "dienst": dienst,
-            "titel": titel,
+            "dienst": dienst[:60] + "..." if len(dienst) > 60 else dienst,  # Voorkom extreem lange teksten in de tabel
+            "titel": titel[:90] + "..." if len(titel) > 90 else titel,
             "route": route,
-            "startdatum": pub_datum[:10],
+            "startdatum": str(pub_datum)[:10],
             "einddatum": eind_dt,
             "actiedatum": actie_dt,
             "status": status,
