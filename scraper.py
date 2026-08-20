@@ -7,8 +7,14 @@ import re
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# 1. Configuratie laden
+# 1. Configuratie & Sniper Filters
 CONFIG_FILE = "config.json"
+MINIMALE_WAARDE_EUR = 10_000_000
+MAX_MAANDEN_VOORUIT = 6
+
+# Zet deze op True als je écht alleen contracten wilt zien waarvan 100% zeker 
+# is dat ze >10M zijn (Waarschuwing: de overheid verbergt vaak het budget).
+VERBERG_ONBEKENDE_WAARDES = False 
 
 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
     config = json.load(f)
@@ -23,41 +29,30 @@ DEFAULT_DURATION = config.get("instellingen", {}).get("standaard_looptijd_maande
 TZ_NL = zoneinfo.ZoneInfo("Europe/Amsterdam")
 
 def fetch_tenderned_publicaties():
-    """Omzeilt de 10.000 limiet door de data per kwartaal vanaf 2017 op te halen."""
     alle_publicaties = []
     headers = {"Accept": "application/json"}
-    
     huidig_jaar = datetime.now(TZ_NL).year
     
     for jaar in range(2017, huidig_jaar + 1):
         kwartalen = [
-            (f"{jaar}-01-01", f"{jaar}-03-31"),
-            (f"{jaar}-04-01", f"{jaar}-06-30"),
-            (f"{jaar}-07-01", f"{jaar}-09-30"),
-            (f"{jaar}-10-01", f"{jaar}-12-31")
+            (f"{jaar}-01-01", f"{jaar}-03-31"), (f"{jaar}-04-01", f"{jaar}-06-30"),
+            (f"{jaar}-07-01", f"{jaar}-09-30"), (f"{jaar}-10-01", f"{jaar}-12-31")
         ]
-        
         for start_dt, eind_dt in kwartalen:
-            print(f"Tijdmachine: Scrapen van Q-periode {start_dt} t/m {eind_dt}...")
-            
-            for page in range(100): # Blijft veilig onder de 10k per kwartaal
+            print(f"Sniper actief: Scrapen van Q-periode {start_dt} t/m {eind_dt}...")
+            for page in range(100): 
                 url = f"https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page={page}&size=100&publicatieDatumVanaf={start_dt}&publicatieDatumTot={eind_dt}"
-                
                 try:
                     response = requests.get(url, headers=headers, timeout=30)
                     if response.status_code == 200:
                         data = response.json().get("content", [])
-                        if not data:
-                            break # Einde van dit specifieke kwartaal bereikt
-                        
+                        if not data: break
                         alle_publicaties.extend(data)
-                        time.sleep(0.1) # Korte pauze tegen blokkades
-                    else:
-                        break
+                        time.sleep(0.1) 
+                    else: break
                 except Exception as e:
                     print(f"Fout bij kwartaal {start_dt} pagina {page}: {e}")
                     break
-            
     return alle_publicaties
 
 def kwalificeer_tender(item):
@@ -83,8 +78,38 @@ def vind_veld(data, verwachte_sleutels_delen):
                 if isinstance(item, (dict, list)): queue.append(item)
     return None
 
+def vind_waarde(data):
+    """Kraakt de API om het budget of de contractwaarde te vinden."""
+    exacte_sleutels = ['geraamdewaarde', 'waarde', 'totaleopdrachtwaarde', 'geschatte_waarde', 'value', 'totalvalue']
+    queue = [data]
+    max_waarde = 0.0
+    while queue:
+        current = queue.pop(0)
+        if isinstance(current, dict):
+            for k, v in current.items():
+                if k.lower() in exacte_sleutels:
+                    if isinstance(v, (int, float)):
+                        max_waarde = max(max_waarde, float(v))
+                    elif isinstance(v, dict) and 'bedrag' in v:
+                        try: max_waarde = max(max_waarde, float(v['bedrag']))
+                        except: pass
+                    elif isinstance(v, dict) and 'amount' in v:
+                        try: max_waarde = max(max_waarde, float(v['amount']))
+                        except: pass
+                    elif isinstance(v, str):
+                        try:
+                            clean_v = re.sub(r'[^\d]', '', v)
+                            if clean_v: max_waarde = max(max_waarde, float(clean_v))
+                        except: pass
+            for k, v in current.items():
+                if not k.startswith('_') and isinstance(v, (dict, list)): queue.append(v)
+        elif isinstance(current, list):
+            for item in current:
+                if isinstance(item, (dict, list)): queue.append(item)
+    return max_waarde
+
 def vind_titel(data):
-    exacte_sleutels = ['opdrachtnaam', 'aanbestedingnaam', 'publicatienaam', 'benaming', 'titel', 'title', 'naamopdracht', 'projectnaam', 'omschrijving']
+    exacte_sleutels = ['opdrachtnaam', 'aanbestedingnaam', 'publicatienaam', 'benaming', 'titel', 'title']
     queue = [data]
     while queue:
         current = queue.pop(0)
@@ -93,7 +118,7 @@ def vind_titel(data):
                 if k.lower() in exacte_sleutels:
                     if isinstance(v, str) and v.strip() and v.strip().lower() != "self": return v.strip()
             for k, v in current.items():
-                if k.lower() in ['aanbesteding', 'opdracht', 'tender', 'publicatie', 'aankondiging']:
+                if k.lower() in ['aanbesteding', 'opdracht', 'tender', 'publicatie']:
                     if isinstance(v, dict):
                         for sub_k, sub_v in v.items():
                             if sub_k.lower() in ['naam', 'name', 'titel'] and isinstance(sub_v, str) and sub_v.strip() and sub_v.strip().lower() != 'self': return sub_v.strip()
@@ -110,26 +135,25 @@ def bepaal_type_dienst(dienst_naam):
     if any(x in naam for x in ["ministerie", "rijk", "belastingdienst", "defensie", "politie"]): return "Rijksoverheid"
     if any(x in naam for x in ["omgevingsdienst", "rud "]): return "Omgevingsdienst"
     if any(x in naam for x in ["uwv", "svb", "kadaster", "cibg", "duo", "cbs", "rvo", "cbr", "cjib"]): return "Uitvoeringsorganisatie"
-    if any(x in naam for x in ["stichting", "universiteit", "hogeschool", "college", "onderwijs", "scholengroep", "roc "]): return "Onderwijs"
+    if any(x in naam for x in ["stichting", "universiteit", "hogeschool", "college", "onderwijs", "roc "]): return "Onderwijs"
     if "provincie" in naam: return "Provincie"
     if "waterschap" in naam or "hoogheemraadschap" in naam: return "Waterschap"
     if "ziekenhuis" in naam or "ggz" in naam or "zorg" in naam: return "Zorg"
     return "Overig"
 
 def normaliseer_titel(titel):
-    """Verwijdert jaartallen en stopwoorden om tenders netjes aan elkaar te koppelen (voor deduplicatie)"""
     t = str(titel).lower()
     t = re.sub(r'\b20\d{2}\b', '', t)
-    for w in ['aanbesteding', 'europese', 'marktconsultatie', 'raamovereenkomst', 'nadere', 'overeenkomst', 'voor', 'inzake']:
+    for w in ['aanbesteding', 'europese', 'marktconsultatie', 'raamovereenkomst', 'nadere', 'overeenkomst', 'voor']:
         t = t.replace(w, '')
     return " ".join(t.split())
 
 def match_inkooproute(aanbestedende_dienst):
-    if not aanbestedende_dienst or aanbestedende_dienst == "Onbekend": return "Vrije inschrijving / Consortium"
+    if not aanbestedende_dienst or aanbestedende_dienst == "Onbekend": return "Vrije inschrijving"
     dienst_str = str(aanbestedende_dienst).lower()
     for sleutel, route in MANTEL_ROUTES.items():
         if sleutel.lower() in dienst_str: return route
-    return "Vrije inschrijving / Consortium"
+    return "Vrije inschrijving"
 
 def bereken_tijdlijn(publicatie_datum_str, ruwe_data):
     looptijd_str = vind_veld(ruwe_data, ["looptijdinmaanden", "contractduration", "duration", "looptijd", "duur"])
@@ -145,27 +169,22 @@ def bereken_tijdlijn(publicatie_datum_str, ruwe_data):
     actie_dt = eind_dt - relativedelta(months=LEAD_TIME_MONTHS)
     nu = datetime.now(TZ_NL).replace(tzinfo=None)
 
-    # Filter: Als het contract langer dan 1 jaar geleden is afgelopen, verberg het.
-    # Als een contract UIT 2018 NU (of eind 2025/2026) afloopt, komt hij prachtig in beeld!
-    if eind_dt < (nu - relativedelta(months=12)):
-        aandacht = "Verjaard (Verborgen)"
-        badge_class = "badge-secondary"
-        sort_score = 5
-    elif actie_dt <= nu:
+    maanden_tot_actie = (actie_dt - nu).days / 30.0
+
+    # SNIPER FILTER: Ligt de actiedatum meer dan X maanden in de toekomst? Of is hij verjaard?
+    if maanden_tot_actie > MAX_MAANDEN_VOORUIT or eind_dt < (nu - relativedelta(months=12)):
+        return eind_dt.strftime("%Y-%m-%d"), actie_dt.strftime("%Y-%m-%d"), "Buiten scope", "", 5, True
+
+    if actie_dt <= nu:
         aandacht = "🚨 Nu Actie"
         badge_class = "badge-danger"
         sort_score = 1
-    elif (actie_dt - nu).days <= 365:
-        aandacht = "⚠️ Korte termijn"
+    else:
+        aandacht = "⚠️ Binnen 6 mnd"
         badge_class = "badge-warning"
         sort_score = 2
-    else:
-        aandacht = "🔭 Anticiperen"
-        badge_class = "badge-success"
-        sort_score = 3
 
-    is_te_laat = (sort_score == 5)
-    return eind_dt.strftime("%Y-%m-%d"), actie_dt.strftime("%Y-%m-%d"), aandacht, badge_class, sort_score, is_te_laat
+    return eind_dt.strftime("%Y-%m-%d"), actie_dt.strftime("%Y-%m-%d"), aandacht, badge_class, sort_score, False
 
 def genereer_microsite(leads):
     os.makedirs("tenderned", exist_ok=True)
@@ -176,14 +195,16 @@ def genereer_microsite(leads):
 
     rijen_html = ""
     for lead in leads:
-        count_html = f'<span class="count-badge" title="Dit traject is {lead["cyclus_count"]} keer voorgekomen">{lead["cyclus_count"]}x</span>' if lead["cyclus_count"] > 1 else ''
+        count_html = f'<span class="count-badge" title="Cyclus: {lead["cyclus_count"]}x voorgekomen">{lead["cyclus_count"]}x</span>' if lead["cyclus_count"] > 1 else ''
+        
+        waarde_html = f"€ {lead['waarde'] / 1000000:.1f}M" if lead['waarde'] > 0 else "<span style='color: #94a3b8;'>Onbekend</span>"
         
         rijen_html += f"""
         <tr class="tender-row" data-type="{lead['type_dienst']}">
-            <td class="client-cell" style="max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['dienst']}"><strong>{lead['dienst']}</strong></td>
-            <td class="title-cell" style="max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['titel']}">{lead['titel']} {count_html}</td>
+            <td class="client-cell" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['dienst']}"><strong>{lead['dienst']}</strong></td>
+            <td class="title-cell" style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{lead['titel']}">{lead['titel']} {count_html}</td>
+            <td><strong>{waarde_html}</strong></td>
             <td><span class="route-tag">{lead['route']}</span></td>
-            <td>{lead['startdatum']}</td>
             <td>{lead['einddatum']}</td>
             <td><strong>{lead['actiedatum']}</strong></td>
             <td><span class="badge {lead['badge_class']}">{lead['aandacht']}</span></td>
@@ -196,7 +217,7 @@ def genereer_microsite(leads):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BobSVP TN Tender Pipeline & Forecast</title>
+    <title>BobSVP | Strategische Tender Hitlist</title>
     <style>
         :root {{ --primary: #0f172a; --accent: #2563eb; --bg: #f1f5f9; --card-bg: #ffffff; --text-main: #334155; --text-muted: #64748b; --border: #e2e8f0; }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text-main); margin: 0; padding: 30px; }}
@@ -225,8 +246,6 @@ def genereer_microsite(leads):
         .badge {{ display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }}
         .badge-danger {{ background: #fee2e2; color: #991b1b; }}
         .badge-warning {{ background: #fef3c7; color: #92400e; }}
-        .badge-success {{ background: #dcfce7; color: #166534; }}
-        .badge-secondary {{ background: #e2e8f0; color: #475569; }}
         .count-badge {{ background: #1e293b; color: white; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; margin-left: 6px; vertical-align: top; }}
         .route-tag {{ font-size: 0.78rem; background: #e0f2fe; color: #0369a1; padding: 3px 8px; border-radius: 4px; display: inline-block; line-height: 1.3; }}
         .btn-link {{ background-color: var(--accent); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 0.75rem; font-weight: 600; display: inline-block; transition: background-color 0.2s; white-space: nowrap; }}
@@ -237,19 +256,19 @@ def genereer_microsite(leads):
     <div class="container">
         <div class="header">
             <div>
-                <h1>BobSVP TN Tender Pipeline & Forecast</h1>
-                <div class="timestamp">Laatste update: {nu_str} (Lokaal)</div>
+                <h1>Strategische Tender Hitlist (> €10M)</h1>
+                <div class="timestamp">Focus: Actie binnen {MAX_MAANDEN_VOORUIT} maanden | Update: {nu_str} (CEST)</div>
             </div>
-            <a href="/" style="font-size: 0.85rem; color: var(--accent); text-decoration: none; font-weight: 500;">← Terug naar hoofdsite</a>
+            <a href="/" style="font-size: 0.85rem; color: var(--accent); text-decoration: none; font-weight: 500;">← Terug naar portfolio</a>
         </div>
 
         <div class="kpi-grid">
             <div class="kpi-card">
-                <div class="kpi-title">Unieke Pipeline Projecten</div>
+                <div class="kpi-title">Hitlist Projecten</div>
                 <div class="kpi-value">{totaal_leads}</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-title">Directe Actie (Nu of Binnenkort)</div>
+                <div class="kpi-title">Urgent (Deadline verstreken/nu)</div>
                 <div class="kpi-value" style="color: #b91c1c;">{urgent_count}</div>
             </div>
         </div>
@@ -265,25 +284,25 @@ def genereer_microsite(leads):
         </div>
 
         <div class="toolbar">
-            <input type="text" id="searchInput" class="search-box" placeholder="Filter op dienst, titel of status..." onkeyup="filterTable()">
+            <input type="text" id="searchInput" class="search-box" placeholder="Filter op dienst, titel..." onkeyup="filterTable()">
         </div>
 
         <div class="table-card">
             <table id="tenderTable">
                 <thead>
                     <tr>
-                        <th style="width: 15%;">Aanbestedende Dienst</th>
-                        <th style="width: 25%;">Titel</th>
-                        <th style="width: 16%;">Inkooproute / Mantel</th>
-                        <th style="width: 8%;">Gepubliceerd</th>
-                        <th style="width: 8%;">Einddatum</th>
-                        <th style="width: 9%;">Acquisitie Start</th>
-                        <th style="width: 14%;">Prioriteit</th>
+                        <th style="width: 14%;">Aanbestedende Dienst</th>
+                        <th style="width: 24%;">Titel</th>
+                        <th style="width: 8%;">Waarde</th>
+                        <th style="width: 15%;">Inkooproute / Mantel</th>
+                        <th style="width: 9%;">Einddatum</th>
+                        <th style="width: 10%;">Acquisitie Start</th>
+                        <th style="width: 13%;">Prioriteit</th>
                         <th style="width: 5%;">Actie</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {rijen_html if rijen_html else "<tr><td colspan='8'>Geen items gevonden.</td></tr>"}
+                    {rijen_html if rijen_html else "<tr><td colspan='8' style='text-align: center; padding: 20px;'>Geen leads gevonden die voldoen aan de >€10M en 6-maanden eis.</td></tr>"}
                 </tbody>
             </table>
         </div>
@@ -291,25 +310,20 @@ def genereer_microsite(leads):
 
     <script>
         let currentType = 'Alle';
-        
         function setFilter(type, event) {{
             currentType = type;
             document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             filterTable();
         }}
-
         function filterTable() {{
             const input = document.getElementById("searchInput").value.toLowerCase();
             const rows = document.querySelectorAll("#tenderTable tbody tr.tender-row");
-            
             rows.forEach(row => {{
                 const text = row.innerText.toLowerCase();
                 const rowType = row.getAttribute('data-type');
-                
                 const matchesSearch = text.includes(input);
                 const matchesType = (currentType === 'Alle' || rowType === currentType);
-                
                 row.style.display = (matchesSearch && matchesType) ? "" : "none";
             }});
         }}
@@ -324,10 +338,18 @@ def main():
     publicaties = fetch_tenderned_publicaties()
     
     ruwe_leads = []
-    # Stap 1: Filter de strategische hits
     for pub in publicaties:
         is_fit, reden = kwalificeer_tender(pub)
         if not is_fit: continue
+
+        waarde = vind_waarde(pub)
+        
+        # SNIPER FILTER: Contractwaarde
+        if waarde > 0 and waarde < MINIMALE_WAARDE_EUR:
+            continue # Te klein, weg ermee.
+            
+        if waarde == 0 and VERBERG_ONBEKENDE_WAARDES:
+            continue # Alleen 100% zekere bedragen tonen.
 
         dienst = vind_veld(pub, ["aanbestedendedienst", "organisatie", "opdrachtgever", "publicerendondernemer"]) or "Onbekend"
         titel = vind_titel(pub)
@@ -337,17 +359,16 @@ def main():
         ruwe_leads.append({
             "dienst": dienst.replace("\n", " ").strip(),
             "titel": titel.replace("\n", " ").strip(),
+            "waarde": waarde,
             "startdatum": str(pub_datum)[:10],
             "ruwe_data": pub,
             "pub_id": pub_id
         })
 
-    # Stap 2: Groeperen en ontdubbelen
     project_groepen = {}
     for lead in ruwe_leads:
         norm_titel = normaliseer_titel(lead['titel'])
         key = (lead['dienst'], norm_titel)
-        
         if key not in project_groepen:
             project_groepen[key] = []
         project_groepen[key].append(lead)
@@ -360,19 +381,18 @@ def main():
         leads_in_project.sort(key=lambda x: x['startdatum'], reverse=True)
         laatste_lead = leads_in_project[0]
         
-        eind_dt, actie_dt, aandacht, badge, sort_score, is_te_laat = bereken_tijdlijn(laatste_lead['startdatum'], laatste_lead['ruwe_data'])
+        eind_dt, actie_dt, aandacht, badge, sort_score, verbergen = bereken_tijdlijn(laatste_lead['startdatum'], laatste_lead['ruwe_data'])
         
-        # De absolute opschoning: gooi 2012 lijken weg, bewaar wat NU/Binnenkort afloopt!
-        if is_te_laat: continue
+        if verbergen: continue
 
         link = f"https://www.tenderned.nl/aankondigingen/overzicht/{laatste_lead['pub_id']}" if laatste_lead['pub_id'] else "https://www.tenderned.nl/"
 
         gekwalificeerde_leads.append({
             "dienst": laatste_lead['dienst'],
             "titel": laatste_lead['titel'],
+            "waarde": laatste_lead['waarde'],
             "type_dienst": bepaal_type_dienst(laatste_lead['dienst']),
             "route": match_inkooproute(laatste_lead['dienst']),
-            "startdatum": laatste_lead['startdatum'],
             "einddatum": eind_dt,
             "actiedatum": actie_dt,
             "aandacht": aandacht,
@@ -382,11 +402,9 @@ def main():
             "link": link
         })
 
-    # Sortering: Alles wat NU actie vereist staat direct bovenaan
     gekwalificeerde_leads.sort(key=lambda x: (x["sort_score"], x["actiedatum"]))
-    
     genereer_microsite(gekwalificeerde_leads)
-    print(f"Microsite gegenereerd in tenderned/index.html ({len(gekwalificeerde_leads)} unieke leads).")
+    print(f"Microsite gegenereerd in tenderned/index.html ({len(gekwalificeerde_leads)} hits gevonden).")
 
 if __name__ == "__main__":
     main()
