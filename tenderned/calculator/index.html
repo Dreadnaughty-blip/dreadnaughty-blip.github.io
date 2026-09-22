@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platform Integration Engine | Value Gap Calculator</title>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #171033 100%);
+            --glass-bg: rgba(30, 41, 59, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.4);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.3);
+            --warning: #f59e0b;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            margin: 0;
+            padding: 50px 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1050px;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+        @media (max-width: 768px) {
+            .container { grid-template-columns: 1fr; }
+        }
+        
+        /* Glassmorphism Cards */
+        .card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 35px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        h1 { font-size: 1.9rem; margin: 0 0 5px 0; color: #ffffff; letter-spacing: -0.5px; }
+        p.subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 30px; line-height: 1.5; }
+        
+        .form-group { margin-bottom: 22px; }
+        label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        input {
+            width: 100%;
+            box-sizing: border-box;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--glass-border);
+            color: #ffffff;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-size: 1.05rem;
+            transition: all 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 15px var(--accent-glow); background: rgba(15, 23, 42, 0.8); }
+        
+        button {
+            width: 100%;
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 10px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 20px -10px var(--accent-glow);
+            margin-top: 10px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px -10px var(--accent-glow);
+            background: linear-gradient(135deg, #1d4ed8, #2563eb);
+        }
+
+        .report-header { text-align: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 25px; margin-bottom: 25px; }
+        
+        .kpi-large { 
+            font-size: 3rem; 
+            font-weight: 800; 
+            color: var(--danger); 
+            margin: 15px 0; 
+            text-shadow: 0 0 20px var(--danger-glow);
+            font-variant-numeric: tabular-nums;
+        }
+        
+        h3 { font-size: 1.1rem; color: #e2e8f0; margin-bottom: 20px; }
+        
+        .line-item { display: flex; justify-content: space-between; padding: 14px 0; border-bottom: 1px dashed var(--glass-border); }
+        .line-item:last-child { border-bottom: none; }
+        .item-label { font-weight: 500; font-size: 0.95rem; color: #cbd5e1; }
+        .item-value { font-family: monospace; font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Input Formulier -->
+        <div class="card">
+            <h1>EBITDA Leakage Calculator</h1>
+            <p class="subtitle">Kwantificeer direct het financiële risico van gedecentraliseerde 'Buy-and-Leave' IT-integraties.</p>
+            
+            <div class="form-group">
+                <label>Gecombineerde Portfoliomzet (€)</label>
+                <input type="number" id="inpRevenue" value="200000000">
+            </div>
+            <div class="form-group">
+                <label>Target Operationele Marge (%)</label>
+                <input type="number" id="inpMargin" value="10">
+            </div>
+            <div class="form-group">
+                <label>Platform Exit Multiple (x)</label>
+                <input type="number" id="inpMultiple" value="10.0" step="0.1">
+            </div>
+            <div class="form-group">
+                <label>Totaal Acquisitie FTE's</label>
+                <input type="number" id="inpFte" value="1000">
+            </div>
+            <div class="form-group">
+                <label>Verwacht IT-gerelateerd Verloop Jaar 1 (%)</label>
+                <input type="number" id="inpChurn" value="47">
+            </div>
+            
+            <button onclick="triggerCalculation()">Genereer Audit Report</button>
+        </div>
+
+        <!-- Output Dashboard -->
+        <div class="card" id="outputReport" style="opacity: 0.3; transition: opacity 0.5s ease; pointer-events: none;">
+            <div class="report-header">
+                <p class="subtitle" style="margin-bottom: 0; color: #cbd5e1; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Capitalized Enterprise Value Loss</p>
+                <div class="kpi-large" id="outTotalLoss">€ 0</div>
+                <p class="subtitle" id="outLossPct" style="color: var(--danger); font-weight: bold; font-size: 1.1rem; margin-top: 0;">0.00% of Deal Value Destroyed</p>
+            </div>
+            
+            <h3>Jaarlijkse Operationele Leakage</h3>
+            <div class="line-item">
+                <span class="item-label">Synergy Realization Gap</span>
+                <span class="item-value" id="outSynLoss" style="color: var(--warning);">€ 0</span>
+            </div>
+            <div class="line-item">
+                <span class="item-label">Operational Complexity Drag</span>
+                <span class="item-value" id="outOpLoss" style="color: var(--warning);">€ 0</span>
+            </div>
+            <div class="line-item">
+                <span class="item-label">Talent Attrition Cost</span>
+                <span class="item-value" id="outTalentLoss" style="color: var(--warning);">€ 0</span>
+            </div>
+            <div class="line-item" style="border-top: 2px solid rgba(239, 68, 68, 0.3); margin-top: 15px; padding-top: 15px;">
+                <span class="item-label" style="font-weight: bold; color: var(--danger); font-size: 1.05rem;">Combined Annual Leakage</span>
+                <span class="item-value" id="outAnnualLoss" style="color: var(--danger); font-weight: bold; font-size: 1.25rem;">€ 0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function formatCurrency(num) {
+            return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(num);
+        }
+
+        function animateValue(objId, start, end, duration, isCurrency = true, suffix = '') {
+            let obj = document.getElementById(objId);
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                // Ease out cubic
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                const current = Math.floor(easeOut * (end - start) + start);
+                
+                if (isCurrency) {
+                    obj.textContent = formatCurrency(current);
+                } else {
+                    obj.textContent = current.toFixed(2) + suffix;
+                }
+                
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                } else {
+                    obj.textContent = isCurrency ? formatCurrency(end) : end.toFixed(2) + suffix;
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        function triggerCalculation() {
+            const report = document.getElementById('outputReport');
+            report.style.opacity = '1';
+            
+            // Inputs
+            const revenue = parseFloat(document.getElementById('inpRevenue').value);
+            const margin = parseFloat(document.getElementById('inpMargin').value) / 100;
+            const multiple = parseFloat(document.getElementById('inpMultiple').value);
+            const fte = parseFloat(document.getElementById('inpFte').value);
+            const churn = parseFloat(document.getElementById('inpChurn').value) / 100;
+            
+            // Base Metrics
+            const ebitda = revenue * margin;
+            const ev = ebitda * multiple;
+            const plannedSynergies = ebitda * 0.15;
+            
+            // Leakage Calculations
+            const synergyLoss = plannedSynergies * 0.50 * 0.50; 
+            const opComplexityLoss = ebitda * 0.15; 
+            const talentLoss = (fte * churn * 40000) / 5; 
+            
+            const totalAnnualLoss = synergyLoss + opComplexityLoss + talentLoss;
+            const totalCapLoss = totalAnnualLoss * multiple;
+            const pctDestroyed = (totalCapLoss / ev) * 100;
+
+            // Trigger Count-Up Animations (Duration in ms)
+            animateValue('outSynLoss', 0, synergyLoss, 1000);
+            animateValue('outOpLoss', 0, opComplexityLoss, 1200);
+            animateValue('outTalentLoss', 0, talentLoss, 1400);
+            animateValue('outAnnualLoss', 0, totalAnnualLoss, 1600);
+            
+            // De grote impact nummers iets langzamer voor drama
+            animateValue('outTotalLoss', 0, totalCapLoss, 2000);
+            animateValue('outLossPct', 0, pctDestroyed, 2000, false, '% of Deal Value Destroyed');
+        }
+    </script>
+</body>
+</html>
